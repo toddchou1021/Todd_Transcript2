@@ -12,7 +12,7 @@ from typing import Any
 import websocket
 
 from .audio_recorder import AudioRecorder
-from .paths import ROOT_DIR
+from .paths import EXPORTS_DIR
 
 
 REALTIME_SAMPLE_RATE = 24000
@@ -111,7 +111,7 @@ class RealtimeBaseController:
         text = self.get_text().strip()
         if not text:
             return {"ok": False, "error": "Nothing to save."}
-        export_dir = ROOT_DIR / "realtime_exports"
+        export_dir = EXPORTS_DIR
         export_dir.mkdir(parents=True, exist_ok=True)
         path = export_dir / export_name
         path.write_text(text + "\n", encoding="utf-8")

@@ -110,14 +110,14 @@ class AudioRecorder:
             audio.terminate()
 
     def _record_from_helper(self) -> None:
-        if not Path(HELPER_PATH).exists():
+        helper_cmd = [sys.executable, "--audio-helper"] if getattr(sys, "frozen", False) else [sys.executable, str(HELPER_PATH)]
+        if not getattr(sys, "frozen", False) and not Path(HELPER_PATH).exists():
             raise FileNotFoundError(f"Audio helper not found: {HELPER_PATH}")
         mode = "both" if self.input_mode == "both" else "system"
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         self._helper = subprocess.Popen(
-            [
-                sys.executable,
-                str(HELPER_PATH),
+            helper_cmd
+            + [
                 "--mode",
                 mode,
                 "--sample-rate",
