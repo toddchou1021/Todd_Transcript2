@@ -17,6 +17,10 @@ PORT = int(os.environ.get("TODD_PIPELINE_PORT", "8765"))
 WHISPER_MODEL = os.environ.get("TODD_WHISPER_MODEL", "openai/whisper-large-v3-turbo")
 QWEN_MODEL = os.environ.get("TODD_QWEN_MODEL", "qwen3.5:4b")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
+_ASR_MODEL: Any = None
+_ASR_PROCESSOR: Any = None
+_ASR_DEVICE: str | None = None
+_ASR_DTYPE: Any = None
 
 
 async def _send(ws, payload: dict[str, Any]) -> None:
@@ -108,22 +112,65 @@ def _write_wav(pcm: bytes, sample_rate: int, channels: int) -> Path:
 
 def _transcribe(path: Path, config: dict[str, Any]) -> str:
     try:
-        from faster_whisper import WhisperModel
+        import numpy as np
+        import torch
+        from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
     except Exception as exc:
         raise RuntimeError(
-            "Local backend needs faster-whisper installed to use Whisper Large v3 Turbo. "
-            "Install the backend extras or run the packaged build that includes them."
+            "Local backend needs torch and transformers installed to use openai/whisper-large-v3-turbo."
         ) from exc
 
-    model_size = os.environ.get("TODD_FASTER_WHISPER_MODEL", "large-v3-turbo")
-    device = os.environ.get("TODD_WHISPER_DEVICE", "auto")
-    compute_type = os.environ.get("TODD_WHISPER_COMPUTE_TYPE", "default")
-    model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    global _ASR_MODEL, _ASR_PROCESSOR, _ASR_DEVICE, _ASR_DTYPE
+    if _ASR_MODEL is None or _ASR_PROCESSOR is None:
+        device_setting = os.environ.get("TODD_WHISPER_DEVICE", "auto").lower()
+        if device_setting == "auto":
+            _ASR_DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+        else:
+            _ASR_DEVICE = device_setting
+        _ASR_DTYPE = torch.float16 if str(_ASR_DEVICE).startswith("cuda") else torch.float32
+        try:
+            _ASR_PROCESSOR = AutoProcessor.from_pretrained(WHISPER_MODEL, local_files_only=True)
+            _ASR_MODEL = AutoModelForSpeechSeq2Seq.from_pretrained(
+                WHISPER_MODEL,
+                torch_dtype=_ASR_DTYPE,
+                low_cpu_mem_usage=True,
+                use_safetensors=True,
+                local_files_only=True,
+            ).to(_ASR_DEVICE)
+        except Exception:
+            _ASR_PROCESSOR = AutoProcessor.from_pretrained(WHISPER_MODEL)
+            _ASR_MODEL = AutoModelForSpeechSeq2Seq.from_pretrained(
+                WHISPER_MODEL,
+                torch_dtype=_ASR_DTYPE,
+                low_cpu_mem_usage=True,
+                use_safetensors=True,
+            ).to(_ASR_DEVICE)
+        _ASR_MODEL.eval()
 
     language = (config.get("source_language") or "").strip() or None
-    hotwords = (config.get("hotwords") or "").strip() or None
-    segments, _info = model.transcribe(str(path), language=language, hotwords=hotwords)
-    return "".join(segment.text for segment in segments).strip()
+    audio, sample_rate = _read_wav_float32(path, np)
+    inputs = _ASR_PROCESSOR(audio, sampling_rate=sample_rate, return_tensors="pt")
+    input_features = inputs.input_features.to(_ASR_DEVICE, dtype=_ASR_DTYPE)
+    generate_kwargs: dict[str, Any] = {"max_new_tokens": 256}
+    if language:
+        generate_kwargs["language"] = language
+    with torch.inference_mode():
+        predicted_ids = _ASR_MODEL.generate(input_features, **generate_kwargs)
+    return _ASR_PROCESSOR.batch_decode(predicted_ids, skip_special_tokens=True)[0].strip()
+
+
+def _read_wav_float32(path: Path, np) -> tuple[Any, int]:
+    with wave.open(str(path), "rb") as wav:
+        channels = wav.getnchannels()
+        sample_width = wav.getsampwidth()
+        sample_rate = wav.getframerate()
+        frames = wav.readframes(wav.getnframes())
+    if sample_width != 2:
+        raise RuntimeError(f"Unsupported WAV sample width: {sample_width}")
+    audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+    if channels > 1:
+        audio = audio.reshape(-1, channels).mean(axis=1)
+    return audio, sample_rate
 
 
 def _postprocess(transcript: str, config: dict[str, Any]) -> str:

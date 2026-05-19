@@ -112,7 +112,7 @@ For Windows end users, build or use the installer:
 .\scripts\build_windows_installer.ps1
 ```
 
-The installer output is written to `dist/ToddTranscriptSetup-1.0.1.exe`. It installs a one-click launcher that starts both the desktop app and the bundled local backend. Whisper model weights are downloaded by the backend on first use if they are not already cached. Qwen still requires Ollama with the configured model available locally.
+The installer output is written to `dist/ToddTranscriptSetup-1.0.1.exe`. It installs a one-click launcher that starts both the desktop app and the bundled local backend. The backend uses `openai/whisper-large-v3-turbo` through Transformers and reuses the normal Hugging Face cache when available. Qwen still requires Ollama with the configured model available locally.
 
 ----------
 
@@ -132,7 +132,7 @@ Windows 一般使用者可以建置或使用 installer：
 .\scripts\build_windows_installer.ps1
 ```
 
-Installer 會輸出到 `dist/ToddTranscriptSetup-1.0.1.exe`。安裝後會提供一鍵啟動器，同時啟動桌面 app 與內建本機 backend。如果尚未快取，backend 會在第一次使用時下載 Whisper 模型權重。Qwen 仍需要本機 Ollama 已具備設定的模型。
+Installer 會輸出到 `dist/ToddTranscriptSetup-1.0.1.exe`。安裝後會提供一鍵啟動器，同時啟動桌面 app 與內建本機 backend。Backend 會透過 Transformers 使用 `openai/whisper-large-v3-turbo`，並在可用時重用一般 Hugging Face cache。Qwen 仍需要本機 Ollama 已具備設定的模型。
 
 ## Local Models
 
@@ -142,7 +142,7 @@ Local transcribe and translate mode uses the bundled backend at `pipeline_api.ur
 - Cleanup and translation: Qwen 3.5 4B through Ollama
 - Optional realtime windows: OpenAI Realtime models `gpt-realtime-whisper` and `gpt-realtime-translate`
 
-The desktop app does not run model inference directly. The bundled backend runs inference, downloads Whisper weights through `faster-whisper` when needed, and calls Ollama for Qwen cleanup or translation.
+The desktop app does not run model inference directly. The bundled backend runs Whisper inference through Transformers using `openai/whisper-large-v3-turbo`, then calls Ollama for Qwen cleanup or translation.
 
 ----------
 
@@ -152,7 +152,7 @@ The desktop app does not run model inference directly. The bundled backend runs 
 - 逐字稿整理與翻譯：透過 Ollama 執行 Qwen 3.5 4B
 - 可選 realtime 視窗：OpenAI Realtime models `gpt-realtime-whisper` 與 `gpt-realtime-translate`
 
-桌面 app 本身不直接執行模型推論。內建 backend 會執行推論、在需要時透過 `faster-whisper` 下載 Whisper 權重，並呼叫 Ollama 進行 Qwen 整理或翻譯。
+桌面 app 本身不直接執行模型推論。內建 backend 會透過 Transformers 使用 `openai/whisper-large-v3-turbo` 執行 Whisper 推論，並呼叫 Ollama 進行 Qwen 整理或翻譯。
 
 ## Developer Mode
 

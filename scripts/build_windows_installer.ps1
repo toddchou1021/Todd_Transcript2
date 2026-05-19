@@ -10,7 +10,13 @@ $AppExe = Join-Path $Root "dist\$AppName.exe"
 $SetupExe = Join-Path $Root "dist\$SetupName.exe"
 
 python -m pip install -r requirements.txt
+if ($LASTEXITCODE -ne 0) { throw "Dependency install failed." }
 python -m pip install pyinstaller
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller install failed." }
+
+Get-Process | Where-Object { $_.ProcessName -in @("Todd Transcript", "ToddTranscriptSetup-1.0.1") } | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+Remove-Item -Force $AppExe, $SetupExe -ErrorAction SilentlyContinue
 
 python -m PyInstaller `
   --noconfirm `
@@ -22,9 +28,12 @@ python -m PyInstaller `
   --add-data "assets;assets" `
   --add-data "audio_capture_helper.py;." `
   --hidden-import "websockets.asyncio.server" `
-  --collect-all "faster_whisper" `
-  --collect-all "ctranslate2" `
+  --collect-all "transformers" `
+  --collect-all "torch" `
+  --collect-all "tokenizers" `
+  --collect-all "safetensors" `
   launcher.py
+if ($LASTEXITCODE -ne 0) { throw "Application PyInstaller build failed." }
 
 if (-not (Test-Path $AppExe)) {
   throw "Application executable was not created: $AppExe"
@@ -39,6 +48,7 @@ python -m PyInstaller `
   --icon "assets\app.ico" `
   --add-binary "$AppExe;." `
   "scripts\installer_bootstrap.py"
+if ($LASTEXITCODE -ne 0) { throw "Installer PyInstaller build failed." }
 
 if (-not (Test-Path $SetupExe)) {
   throw "Installer executable was not created: $SetupExe"
