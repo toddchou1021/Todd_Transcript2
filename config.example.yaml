@@ -1,0 +1,18 @@
+hotkey:
+  transcribe: ctrl+`
+  translate: ctrl+b
+target_language: zh
+postprocess: true
+pipeline_api:
+  url: ws://127.0.0.1:8765/ws/pipeline
+  timeout: 300
+recorder:
+  sample_rate: 16000
+  channels: 1
+  input_mode: system_audio
+realtime:
+  show_partial_words: false
+hotwords_file: data/hotwords.txt
+history_file: data/history.json
+openai:
+  api_key: ""

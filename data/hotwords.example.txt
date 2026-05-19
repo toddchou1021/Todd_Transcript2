@@ -1,0 +1,2 @@
+# Optional ASR and translation hotwords, one per line.
+# Copy to data/hotwords.txt for local use.
