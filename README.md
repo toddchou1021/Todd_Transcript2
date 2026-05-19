@@ -13,6 +13,8 @@ Useful for:
 
 Todd Transcript is built with Python and pywebview. The desktop UI, global hotkeys, audio capture, local history, hotwords, and websocket pipeline client are included in this repository.
 
+Local pipeline mode expects a backend that uses Whisper Large v3 Turbo for speech recognition and Qwen 3.5 4B for transcript cleanup and translation.
+
 ----------
 
 說出來，轉成文字，翻成需要的語言。
@@ -25,6 +27,8 @@ Todd Transcript 是一款以原始碼開發模式執行的 Windows 桌面轉錄�
 - 將即時轉錄或翻譯結果儲存為 Markdown。
 
 Todd Transcript 使用 Python 與 pywebview 建構。桌面 UI、全域快捷鍵、音訊擷取、本機歷史紀錄、hotwords，以及 websocket pipeline client 都包含在此 repository 中。
+
+本機 pipeline 模式預期後端使用 Whisper Large v3 Turbo 進行語音辨識，並使用 Qwen 3.5 4B 進行逐字稿整理與翻譯。
 
 ## Usage
 
@@ -54,6 +58,7 @@ Todd Transcript 使用 Python 與 pywebview 建構。桌面 UI、全域快捷鍵
 - Configurable global hotkeys for transcription and translation.
 - Microphone, system audio, and mixed audio capture support.
 - Local websocket pipeline mode for transcription, translation, and post-processing.
+- Local model stack: Whisper Large v3 Turbo for ASR and Qwen 3.5 4B for cleanup and translation.
 - Hotwords stored in `data/hotwords.txt` for local recognition hints.
 - Local history stored in `data/history.json`.
 - Optional OpenAI Realtime transcription and translation windows.
@@ -65,6 +70,7 @@ Todd Transcript 使用 Python 與 pywebview 建構。桌面 UI、全域快捷鍵
 - 可自訂轉錄與翻譯的全域快捷鍵。
 - 支援麥克風、系統音訊與混合音訊擷取。
 - 透過本機 websocket pipeline 執行轉錄、翻譯與後處理。
+- 本機模型組合：Whisper Large v3 Turbo 用於語音辨識，Qwen 3.5 4B 用於整理與翻譯。
 - Hotwords 會儲存在 `data/hotwords.txt`，作為本機辨識提示。
 - 歷史紀錄會儲存在 `data/history.json`。
 - 可選用 OpenAI Realtime 轉錄與翻譯視窗。
@@ -75,7 +81,18 @@ Todd Transcript 使用 Python 與 pywebview 建構。桌面 UI、全域快捷鍵
 - Windows
 - Python 3.11 or newer recommended
 - A local pipeline websocket service at `ws://127.0.0.1:8765/ws/pipeline`
+- Local Whisper model weights, typically `openai/whisper-large-v3-turbo`, available to the pipeline backend
+- Qwen 3.5 4B available to the pipeline backend, typically through Ollama
 - An OpenAI API key only if using the optional realtime windows
+
+----------
+
+- Windows
+- 建議使用 Python 3.11 或更新版本
+- 本機 pipeline websocket 服務：`ws://127.0.0.1:8765/ws/pipeline`
+- Pipeline 後端可使用的本機 Whisper 模型權重，通常是 `openai/whisper-large-v3-turbo`
+- Pipeline 後端可使用的 Qwen 3.5 4B，通常透過 Ollama 執行
+- 只有使用 optional realtime 視窗時才需要 OpenAI API key
 
 ## Installation
 
@@ -87,6 +104,8 @@ Copy-Item config.example.yaml config.yaml
 
 API keys and runtime files stay local in `config.yaml`, `data/`, and `realtime_exports/`.
 
+The local pipeline backend is separate from this desktop client. Download or prepare the Whisper and Qwen models in that backend environment, then keep `pipeline_api.url` pointed at the running websocket service.
+
 ----------
 
 此 repository 目前以原始碼執行為主。請先從範例檔建立本機設定：
@@ -96,6 +115,28 @@ Copy-Item config.example.yaml config.yaml
 ```
 
 API key 與執行時產生的檔案會保留在本機的 `config.yaml`、`data/` 與 `realtime_exports/`。
+
+本機 pipeline 後端與此桌面 client 分開執行。請在後端環境下載或準備 Whisper 與 Qwen 模型，然後讓 `pipeline_api.url` 指向正在執行的 websocket 服務。
+
+## Local Models
+
+Local transcribe and translate mode uses the backend at `pipeline_api.url`.
+
+- ASR: `openai/whisper-large-v3-turbo`
+- Cleanup and translation: Qwen 3.5 4B through Ollama
+- Optional realtime windows: OpenAI Realtime models `gpt-realtime-whisper` and `gpt-realtime-translate`
+
+The desktop app does not download model weights by itself. Install the model dependencies where the pipeline backend runs, then start the backend before using the `Transcribe` or `Translate` cards.
+
+----------
+
+本機轉錄與翻譯模式會使用 `pipeline_api.url` 指向的後端。
+
+- 語音辨識：`openai/whisper-large-v3-turbo`
+- 逐字稿整理與翻譯：透過 Ollama 執行 Qwen 3.5 4B
+- 可選 realtime 視窗：OpenAI Realtime models `gpt-realtime-whisper` 與 `gpt-realtime-translate`
+
+桌面 app 不會自行下載模型權重。請在 pipeline 後端執行環境安裝模型依賴，並先啟動後端，再使用 `Transcribe` 或 `Translate` 區塊。
 
 ## Developer Mode
 
