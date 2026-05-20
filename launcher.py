@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import atexit
+import json
 from pathlib import Path
 import socket
 import subprocess
@@ -9,9 +10,18 @@ import time
 
 
 def _is_backend_running(host: str = "127.0.0.1", port: int = 8765) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(0.2)
-        return sock.connect_ex((host, port)) == 0
+    try:
+        import websocket
+
+        ws = websocket.WebSocket()
+        ws.settimeout(2)
+        ws.connect(f"ws://{host}:{port}/ws/pipeline")
+        ws.send(json.dumps({"type": "hello", "client_version": "launcher", "device_id": "launcher"}))
+        raw = ws.recv()
+        ws.close()
+        return json.loads(raw).get("type") == "hello_ok"
+    except Exception:
+        return False
 
 
 def _start_backend() -> subprocess.Popen | None:
@@ -20,7 +30,7 @@ def _start_backend() -> subprocess.Popen | None:
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     cmd = [sys.executable, "--backend"] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve()), "--backend"]
     proc = subprocess.Popen(cmd, creationflags=creationflags)
-    for _ in range(60):
+    for _ in range(240):
         if _is_backend_running():
             return proc
         if proc.poll() is not None:

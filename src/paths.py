@@ -30,4 +30,4 @@ EXPORTS_DIR = ROOT_DIR / "realtime_exports"
 CONFIG_PATH = ROOT_DIR / "config.yaml"
 ICON_PATH = ASSETS_DIR / "app.ico"
 LOGO_PATH = ASSETS_DIR / "app-logo.png"
-HELPER_PATH = RESOURCE_DIR / "audio_capture_helper.py"
+HELPER_PATH = RESOURCE_DIR / ("ToddAudioHelper.exe" if getattr(sys, "frozen", False) else "audio_capture_helper.py")

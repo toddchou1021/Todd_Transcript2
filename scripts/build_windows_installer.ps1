@@ -7,6 +7,7 @@ $Version = "1.0.1"
 $AppName = "Todd Transcript"
 $SetupName = "ToddTranscriptSetup-$Version"
 $AppExe = Join-Path $Root "dist\$AppName.exe"
+$HelperExe = Join-Path $Root "dist\ToddAudioHelper.exe"
 $SetupExe = Join-Path $Root "dist\$SetupName.exe"
 
 python -m pip install -r requirements.txt
@@ -16,7 +17,20 @@ if ($LASTEXITCODE -ne 0) { throw "PyInstaller install failed." }
 
 Get-Process | Where-Object { $_.ProcessName -in @("Todd Transcript", "ToddTranscriptSetup-1.0.1") } | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
-Remove-Item -Force $AppExe, $SetupExe -ErrorAction SilentlyContinue
+Remove-Item -Force $AppExe, $HelperExe, $SetupExe -ErrorAction SilentlyContinue
+
+python -m PyInstaller `
+  --noconfirm `
+  --clean `
+  --onefile `
+  --console `
+  --name "ToddAudioHelper" `
+  audio_capture_helper.py
+if ($LASTEXITCODE -ne 0) { throw "Audio helper PyInstaller build failed." }
+
+if (-not (Test-Path $HelperExe)) {
+  throw "Audio helper executable was not created: $HelperExe"
+}
 
 python -m PyInstaller `
   --noconfirm `
@@ -26,7 +40,7 @@ python -m PyInstaller `
   --name $AppName `
   --icon "assets\app.ico" `
   --add-data "assets;assets" `
-  --add-data "audio_capture_helper.py;." `
+  --add-binary "$HelperExe;." `
   --hidden-import "websockets.asyncio.server" `
   --collect-all "transformers" `
   --collect-all "torch" `
