@@ -112,7 +112,7 @@ For Windows end users, build or use the installer:
 .\scripts\build_windows_installer.ps1
 ```
 
-The installer output is written to `dist/ToddTranscriptSetup-1.0.1.exe`. It installs a one-click launcher that starts both the desktop app and the bundled local backend. The backend uses `openai/whisper-large-v3-turbo` through Transformers and reuses the normal Hugging Face cache when available. Qwen still requires Ollama with the configured model available locally.
+The installer output is written to `dist/ToddTranscriptSetup-1.0.2.exe`. It installs a one-click launcher that starts both the desktop app and the bundled local backend. The backend uses `openai/whisper-large-v3-turbo` through Transformers and reuses the normal Hugging Face cache when available. Qwen still requires Ollama with the configured model available locally.
 
 ----------
 
@@ -132,7 +132,7 @@ Windows 一般使用者可以建置或使用 installer：
 .\scripts\build_windows_installer.ps1
 ```
 
-Installer 會輸出到 `dist/ToddTranscriptSetup-1.0.1.exe`。安裝後會提供一鍵啟動器，同時啟動桌面 app 與內建本機 backend。Backend 會透過 Transformers 使用 `openai/whisper-large-v3-turbo`，並在可用時重用一般 Hugging Face cache。Qwen 仍需要本機 Ollama 已具備設定的模型。
+Installer 會輸出到 `dist/ToddTranscriptSetup-1.0.2.exe`。安裝後會提供一鍵啟動器，同時啟動桌面 app 與內建本機 backend。Backend 會透過 Transformers 使用 `openai/whisper-large-v3-turbo`，並在可用時重用一般 Hugging Face cache。Qwen 仍需要本機 Ollama 已具備設定的模型。
 
 ## Local Models
 

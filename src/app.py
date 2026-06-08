@@ -4,6 +4,7 @@ import os
 import threading
 import time
 import traceback
+import ctypes
 from datetime import datetime
 from typing import Any
 
@@ -18,9 +19,11 @@ from .hotwords import HotwordsManager
 from .input_sender import copy_text, paste_text
 from .pipeline import PipelineClient
 from .realtime import RealtimeASRController, RealtimeTranslateController
-from .ui.realtime_windows import REALTIME_ASR_HTML, REALTIME_TRANSLATE_HTML
+from .tray import TrayController
+from .ui.realtime_windows import REALTIME_ASR_HTML, REALTIME_COMBINED_HTML, REALTIME_TRANSLATE_HTML
 from .ui.settings import SettingsWindow
 from .ui.status_overlay import RecordingOverlay
+from .paths import ICON_PATH
 
 
 class ToddTranscriptApp:
@@ -37,22 +40,37 @@ class ToddTranscriptApp:
         self._worker: threading.Thread | None = None
         self._recorder: AudioRecorder | None = None
         self._pipeline: PipelineClient | None = None
+        self._warmup_pipeline: PipelineClient | None = None
+        self._warmup_thread: threading.Thread | None = None
         self._hotkey_handles: list[int] = []
         self.overlay = RecordingOverlay()
         self.realtime_asr = RealtimeASRController(self.config.data)
         self.realtime_translate = RealtimeTranslateController(self.config.data)
         self._realtime_asr_window = None
         self._realtime_translate_window = None
+        self._realtime_combined_window = None
+        self._settings_window: SettingsWindow | None = None
+        self._tray = TrayController(ICON_PATH, self.show_main_window, self.exit_app)
+        self._exiting = False
+        self._warming_up = False
 
     def run(self) -> None:
+        self._set_windows_app_id()
         self._register_hotkeys()
         self.overlay.start()
+        self._tray.start()
+        self.start_backend_warmup()
         try:
-            SettingsWindow(AppAPI(self)).start()
+            self._settings_window = SettingsWindow(AppAPI(self), on_closing=self._on_main_window_closing)
+            self._settings_window.start()
         finally:
             self.shutdown()
 
     def shutdown(self) -> None:
+        self._tray.stop()
+        self._warming_up = False
+        if self._warmup_pipeline:
+            self._warmup_pipeline.close()
         self.stop_recording()
         self.realtime_asr.stop()
         self.realtime_translate.stop()
@@ -64,6 +82,54 @@ class ToddTranscriptApp:
                 pass
         self._hotkey_handles.clear()
 
+    def _set_windows_app_id(self) -> None:
+        if os.name != "nt":
+            return
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("ToddTranscript.App")
+        except Exception:
+            pass
+
+    def show_main_window(self) -> None:
+        window = self._settings_window.window if self._settings_window else None
+        if not window:
+            return
+        try:
+            window.show()
+            window.restore()
+        except Exception:
+            pass
+
+    def exit_app(self) -> None:
+        self._exiting = True
+        try:
+            self._tray.stop()
+        except Exception:
+            pass
+        for window in (self._realtime_asr_window, self._realtime_translate_window, self._realtime_combined_window):
+            if window:
+                try:
+                    window.destroy()
+                except Exception:
+                    pass
+        window = self._settings_window.window if self._settings_window else None
+        if window:
+            try:
+                window.destroy()
+            except Exception:
+                pass
+
+    def _on_main_window_closing(self):
+        if self._exiting:
+            return True
+        window = self._settings_window.window if self._settings_window else None
+        if window:
+            try:
+                window.hide()
+            except Exception:
+                pass
+        return False
+
     def get_status(self) -> dict[str, Any]:
         with self._lock:
             return {
@@ -72,6 +138,41 @@ class ToddTranscriptApp:
                 "status": self.status,
                 "error": self.error,
             }
+
+    def start_backend_warmup(self) -> None:
+        if self._warmup_thread and self._warmup_thread.is_alive():
+            return
+        self._warmup_thread = threading.Thread(target=self._warmup_worker, daemon=True)
+        self._warmup_thread.start()
+
+    def _warmup_worker(self) -> None:
+        with self._lock:
+            if self._recording or self._exiting:
+                return
+            self._warming_up = True
+            self.error = ""
+            self.status = "App Warming Up"
+        try:
+            cfg = self.config.data
+            client = PipelineClient(
+                str(cfg.get("pipeline_api", {}).get("url", "ws://127.0.0.1:8765/ws/pipeline")),
+                int(cfg.get("pipeline_api", {}).get("timeout", 300)),
+            )
+            self._warmup_pipeline = client
+            client.connect(APP_VERSION, "warmup")
+            client.warmup(wait_timeout=int(cfg.get("pipeline_api", {}).get("timeout", 300)))
+            if client.error:
+                self._set_error(client.error)
+        except Exception as exc:
+            self._set_error(f"Warmup failed: {exc}")
+        finally:
+            if self._warmup_pipeline:
+                self._warmup_pipeline.close()
+            self._warmup_pipeline = None
+            with self._lock:
+                self._warming_up = False
+                if not self._recording and not self.error:
+                    self.status = "Idle"
 
     def reload_managers(self) -> None:
         self.history = HistoryManager(self.config.resolve(self.config.get("history_file")))
@@ -88,6 +189,7 @@ class ToddTranscriptApp:
         with self._lock:
             if self._recording:
                 return {"ok": False, "error": "Recording is already running."}
+            self._warming_up = False
             self._recording = True
             self._recording_mode = mode
             self._stop_event.clear()
@@ -199,6 +301,8 @@ class ToddTranscriptApp:
 
     def _set_status(self, message: str) -> None:
         with self._lock:
+            if self._warming_up and not self._recording and message != "App Warming Up":
+                return
             self.status = message
         self.overlay.set_status(message)
 
@@ -327,6 +431,26 @@ class AppAPI:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
+    def open_realtime_combined(self) -> dict[str, Any]:
+        try:
+            if self.app._realtime_combined_window:
+                self.app._realtime_combined_window.show()
+                return {"ok": True}
+            self.app._realtime_combined_window = webview.create_window(
+                "Realtime ASR + Translate",
+                html=REALTIME_COMBINED_HTML,
+                js_api=self,
+                width=980,
+                height=760,
+                min_size=(820, 640),
+                background_color="#121314",
+                text_select=True,
+            )
+            self.app._realtime_combined_window.events.closing += self._on_realtime_combined_closing
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def _on_realtime_asr_closing(self):
         self.app.realtime_asr.stop()
         self.app._realtime_asr_window = None
@@ -334,6 +458,11 @@ class AppAPI:
     def _on_realtime_translate_closing(self):
         self.app.realtime_translate.stop()
         self.app._realtime_translate_window = None
+
+    def _on_realtime_combined_closing(self):
+        self.app.realtime_asr.stop()
+        self.app.realtime_translate.stop()
+        self.app._realtime_combined_window = None
 
     def start_realtime_asr(self, input_mode: str) -> dict[str, Any]:
         return self.app.realtime_asr.start(input_mode)
@@ -395,3 +524,46 @@ class AppAPI:
             )
             result["history_timestamp"] = record.get("timestamp", "")
         return result
+
+    def start_realtime_combined(self, input_mode: str, target_language: str) -> dict[str, Any]:
+        asr_result = self.start_realtime_asr(input_mode)
+        if not asr_result.get("ok"):
+            return asr_result
+        translate_result = self.start_realtime_translate(input_mode, target_language)
+        if not translate_result.get("ok"):
+            self.stop_realtime_asr()
+            return translate_result
+        return {"ok": True}
+
+    def stop_realtime_combined(self) -> dict[str, Any]:
+        self.stop_realtime_asr()
+        self.stop_realtime_translate()
+        return {"ok": True}
+
+    def get_realtime_combined_status(self) -> dict[str, Any]:
+        asr = self.get_realtime_asr_status()
+        translate = self.get_realtime_translate_status()
+        errors = [str(value) for value in (asr.get("error"), translate.get("error")) if value]
+        return {"asr": asr, "translate": translate, "error": " | ".join(errors)}
+
+    def clear_realtime_combined(self) -> dict[str, Any]:
+        self.clear_realtime_asr()
+        self.clear_realtime_translate()
+        return {"ok": True}
+
+    def save_realtime_combined(self) -> dict[str, Any]:
+        paths: list[str] = []
+        errors: list[str] = []
+        asr_result = self.save_realtime_asr()
+        if asr_result.get("ok") and asr_result.get("path"):
+            paths.append(str(asr_result["path"]))
+        elif asr_result.get("error"):
+            errors.append(str(asr_result["error"]))
+        translate_result = self.save_realtime_translate()
+        if translate_result.get("ok") and translate_result.get("path"):
+            paths.append(str(translate_result["path"]))
+        elif translate_result.get("error"):
+            errors.append(str(translate_result["error"]))
+        if not paths:
+            return {"ok": False, "error": " | ".join(errors) or "Nothing to save."}
+        return {"ok": True, "paths": paths}

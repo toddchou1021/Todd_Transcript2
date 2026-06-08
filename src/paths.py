@@ -10,6 +10,9 @@ def _source_root() -> Path:
 
 
 def _app_root() -> Path:
+    if os.environ.get("TODD_INSTALLED_SOURCE"):
+        base = os.environ.get("APPDATA") or str(Path.home())
+        return Path(base) / "Todd Transcript"
     if getattr(sys, "frozen", False):
         base = os.environ.get("APPDATA") or str(Path.home())
         return Path(base) / "Todd Transcript"
@@ -17,6 +20,9 @@ def _app_root() -> Path:
 
 
 def _resource_root() -> Path:
+    installed_source = os.environ.get("TODD_APP_SOURCE_DIR")
+    if os.environ.get("TODD_INSTALLED_SOURCE") and installed_source:
+        return Path(installed_source)
     if getattr(sys, "frozen", False):
         return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
     return _source_root()
@@ -30,4 +36,8 @@ EXPORTS_DIR = ROOT_DIR / "realtime_exports"
 CONFIG_PATH = ROOT_DIR / "config.yaml"
 ICON_PATH = ASSETS_DIR / "app.ico"
 LOGO_PATH = ASSETS_DIR / "app-logo.png"
-HELPER_PATH = RESOURCE_DIR / ("ToddAudioHelper.exe" if getattr(sys, "frozen", False) else "audio_capture_helper.py")
+HELPER_PATH = RESOURCE_DIR / (
+    "audio_capture_helper.py"
+    if os.environ.get("TODD_INSTALLED_SOURCE")
+    else ("ToddAudioHelper.exe" if getattr(sys, "frozen", False) else "audio_capture_helper.py")
+)

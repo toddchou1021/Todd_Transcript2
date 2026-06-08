@@ -112,8 +112,8 @@ nav {{ grid-column:1; grid-row:2; display:flex; flex-direction:column; backgroun
           <button class="btn danger" onclick="stopRecording()">Stop</button>
         </div>
         <div class="row">
-          <div><div class="row-title">Realtime</div><div class="row-desc">Open live transcription or live translation windows.</div></div>
-          <div class="controls"><button class="btn" onclick="openRealtimeASR()">ASR</button><button class="btn" onclick="openRealtimeTranslate()">Translate</button></div>
+          <div><div class="row-title">Realtime</div><div class="row-desc">Open live transcription, live translation, or both in one window.</div></div>
+          <div class="controls"><button class="btn" onclick="openRealtimeASR()">ASR</button><button class="btn" onclick="openRealtimeTranslate()">Translate</button><button class="btn" onclick="openRealtimeCombined()">ASR + Translate</button></div>
         </div>
       </div>
       <div class="panel span-5">
@@ -222,6 +222,7 @@ async function startMode(mode) {{ const r = await pywebview.api.start_recording(
 async function stopRecording() {{ const r = await pywebview.api.stop_recording(); if (!r.ok && r.error) alert(r.error); }}
 async function openRealtimeASR() {{ const r = await pywebview.api.open_realtime_asr(); if (r && r.ok === false) alert(r.error || 'Failed to open realtime ASR'); }}
 async function openRealtimeTranslate() {{ const r = await pywebview.api.open_realtime_translate(); if (r && r.ok === false) alert(r.error || 'Failed to open realtime translation'); }}
+async function openRealtimeCombined() {{ const r = await pywebview.api.open_realtime_combined(); if (r && r.ok === false) alert(r.error || 'Failed to open realtime ASR + translation'); }}
 async function setConfig(key, value) {{ await pywebview.api.set_config(key, value); }}
 async function savePipelineUrl() {{ await setConfig('pipeline_api.url', document.getElementById('pipeline-url').value.trim()); }}
 async function saveOpenAIKey() {{ const el = document.getElementById('openai-api-key'); if (el.value.trim()) await setConfig('openai.api_key', el.value.trim()); el.value=''; init(); }}
@@ -273,8 +274,9 @@ window.addEventListener('pywebviewready', init);
 
 
 class SettingsWindow:
-    def __init__(self, api):
+    def __init__(self, api, on_closing=None):
         self.api = api
+        self.on_closing = on_closing
         self.window = None
 
     def start(self) -> None:
@@ -288,4 +290,6 @@ class SettingsWindow:
             background_color="#121314",
             text_select=True,
         )
+        if self.on_closing:
+            self.window.events.closing += self.on_closing
         webview.start(icon=str(ICON_PATH), debug=False)

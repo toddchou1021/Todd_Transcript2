@@ -3,28 +3,33 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
-$Version = "1.0.1"
+$Version = "1.0.2"
 $AppName = "Todd Transcript"
 $SetupName = "ToddTranscriptSetup-$Version"
 $AppExe = Join-Path $Root "dist\$AppName.exe"
 $HelperExe = Join-Path $Root "dist\ToddAudioHelper.exe"
 $SetupExe = Join-Path $Root "dist\$SetupName.exe"
+$Python = Join-Path $Root ".venv\Scripts\python.exe"
+if (-not (Test-Path $Python)) {
+  $Python = "python"
+}
 
-python -m pip install -r requirements.txt
+& $Python -m pip install -r requirements.txt
 if ($LASTEXITCODE -ne 0) { throw "Dependency install failed." }
-python -m pip install pyinstaller
+& $Python -m pip install pyinstaller
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller install failed." }
 
-Get-Process | Where-Object { $_.ProcessName -in @("Todd Transcript", "ToddTranscriptSetup-1.0.1") } | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process | Where-Object { $_.ProcessName -in @("Todd Transcript", "ToddTranscriptSetup-1.0.1", "ToddTranscriptSetup-1.0.2") } | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 Remove-Item -Force $AppExe, $HelperExe, $SetupExe -ErrorAction SilentlyContinue
 
-python -m PyInstaller `
+& $Python -m PyInstaller `
   --noconfirm `
   --clean `
   --onefile `
   --console `
   --name "ToddAudioHelper" `
+  --hidden-import "pyaudiowpatch" `
   audio_capture_helper.py
 if ($LASTEXITCODE -ne 0) { throw "Audio helper PyInstaller build failed." }
 
@@ -32,16 +37,18 @@ if (-not (Test-Path $HelperExe)) {
   throw "Audio helper executable was not created: $HelperExe"
 }
 
-python -m PyInstaller `
+& $Python -m PyInstaller `
   --noconfirm `
   --clean `
   --onefile `
   --windowed `
   --name $AppName `
   --icon "assets\app.ico" `
+  --version-file "scripts\app_version_info.txt" `
   --add-data "assets;assets" `
   --add-binary "$HelperExe;." `
   --hidden-import "websockets.asyncio.server" `
+  --hidden-import "pyaudiowpatch" `
   --collect-all "transformers" `
   --collect-all "torch" `
   --collect-all "tokenizers" `
@@ -53,7 +60,7 @@ if (-not (Test-Path $AppExe)) {
   throw "Application executable was not created: $AppExe"
 }
 
-python -m PyInstaller `
+& $Python -m PyInstaller `
   --noconfirm `
   --clean `
   --onefile `
@@ -61,6 +68,7 @@ python -m PyInstaller `
   --name $SetupName `
   --icon "assets\app.ico" `
   --add-binary "$AppExe;." `
+  --version-file "scripts\installer_version_info.txt" `
   "scripts\installer_bootstrap.py"
 if ($LASTEXITCODE -ne 0) { throw "Installer PyInstaller build failed." }
 

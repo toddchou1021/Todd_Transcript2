@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -24,11 +25,24 @@ def _is_backend_running(host: str = "127.0.0.1", port: int = 8765) -> bool:
         return False
 
 
+def _backend_python() -> str:
+    installed_python = os.environ.get("TODD_VENV_PYTHON")
+    if installed_python and Path(installed_python).exists():
+        return installed_python
+    local_python = Path(__file__).resolve().parent / ".venv" / "Scripts" / "python.exe"
+    if local_python.exists() and not getattr(sys, "frozen", False):
+        return str(local_python)
+    return sys.executable
+
+
 def _start_backend() -> subprocess.Popen | None:
     if _is_backend_running():
         return None
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    cmd = [sys.executable, "--backend"] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve()), "--backend"]
+    if os.environ.get("TODD_INSTALLED_SOURCE"):
+        cmd = [_backend_python(), str(Path(__file__).resolve()), "--backend"]
+    else:
+        cmd = [sys.executable, "--backend"] if getattr(sys, "frozen", False) else [_backend_python(), str(Path(__file__).resolve()), "--backend"]
     proc = subprocess.Popen(cmd, creationflags=creationflags)
     for _ in range(240):
         if _is_backend_running():

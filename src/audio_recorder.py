@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import math
+import os
 import subprocess
 import sys
 import threading
@@ -110,7 +111,11 @@ class AudioRecorder:
             audio.terminate()
 
     def _record_from_helper(self) -> None:
-        helper_cmd = [str(HELPER_PATH)] if getattr(sys, "frozen", False) else [sys.executable, str(HELPER_PATH)]
+        helper_python = os.environ.get("TODD_VENV_PYTHON")
+        if helper_python and Path(helper_python).exists():
+            helper_cmd = [helper_python, str(HELPER_PATH)]
+        else:
+            helper_cmd = [str(HELPER_PATH)] if getattr(sys, "frozen", False) else [sys.executable, str(HELPER_PATH)]
         if not Path(HELPER_PATH).exists():
             raise FileNotFoundError(f"Audio helper not found: {HELPER_PATH}")
         mode = "both" if self.input_mode == "both" else "system"

@@ -21,6 +21,7 @@ class PipelineClient:
         self.asr_elapsed = 0.0
         self.gpt_elapsed = 0.0
         self.total_elapsed = 0.0
+        self.warmup_elapsed = 0.0
         self.on_asr_delta: Callable[[str], None] | None = None
         self.on_asr_done: Callable[[str], None] | None = None
         self.on_gpt_delta: Callable[[str], None] | None = None
@@ -49,6 +50,21 @@ class PipelineClient:
         self._running = True
         self._recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
         self._recv_thread.start()
+
+    def warmup(self, wait_timeout: int | float = 300) -> bool:
+        if not self.ws or not self.connected:
+            raise RuntimeError("Pipeline is not connected")
+        self.done.clear()
+        self.error = ""
+        self.warmup_elapsed = 0.0
+        self._running = True
+        self._recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
+        self._recv_thread.start()
+        self.ws.send(json.dumps({"type": "warmup"}))
+        if not self.done.wait(timeout=wait_timeout):
+            self.error = "Backend warmup timed out"
+            return False
+        return not self.error
 
     def send_audio_chunk(self, pcm_data: bytes) -> None:
         if self.ws and self.connected:
@@ -127,6 +143,13 @@ class PipelineClient:
             if self.on_done:
                 self.on_done()
             self.done.set()
+        elif kind == "warmup_started":
+            pass
+        elif kind == "warmup_done":
+            self.warmup_elapsed = float(msg.get("elapsed", 0.0) or 0.0)
+            self.done.set()
+        elif kind == "warmup_error":
+            self._fail(msg.get("message", "Backend warmup failed"))
 
     def _fail(self, message: str) -> None:
         self.error = message
