@@ -3,6 +3,7 @@ hotkey:
   translate: ctrl+b
 target_language: zh
 postprocess: true
+ai_provider: qwen
 pipeline_api:
   url: ws://127.0.0.1:8765/ws/pipeline
   timeout: 300
@@ -16,3 +17,6 @@ hotwords_file: data/hotwords.txt
 history_file: data/history.json
 openai:
   api_key: ""
+gemini:
+  api_key: ""
+  model: gemini-3.1-flash-lite

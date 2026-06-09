@@ -56,6 +56,7 @@ h2 {{ margin:0 0 18px; color:#9ce9ff; font-size:21px; font-weight:550; }}
 .row-title {{ font-size:16px; }}
 .row-desc {{ color:var(--dim); font-size:13px; line-height:1.45; margin-top:4px; }}
 .controls {{ display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-end; }}
+.controls input {{ width:190px; min-width:0; }}
 .btn, select, input {{ min-height:36px; border:1px solid var(--line); background:var(--panel2); color:var(--text); padding:0 12px; }}
 .btn {{ background:transparent; color:var(--muted); text-transform:uppercase; font:600 12px/1 Consolas, monospace; }}
 .btn:hover {{ background:var(--accent); border-color:var(--accent); color:#001f25; }}
@@ -130,24 +131,32 @@ nav {{ grid-column:1; grid-row:2; display:flex; flex-direction:column; backgroun
           <div><div class="row-title">Text Polishing</div><div class="row-desc">Let the backend polish ASR output when supported.</div></div>
           <select id="postprocess" onchange="setConfig('postprocess', this.value === 'true')"><option value="true">On</option><option value="false">Off</option></select>
         </div>
+        <div class="row">
+          <div><div class="row-title">Text Engine</div><div class="row-desc">Used after Whisper for polishing and translation.</div></div>
+          <select id="ai-provider" onchange="setConfig('ai_provider', this.value)"><option value="qwen">Qwen 3.5</option><option value="gemini">Gemini 3.1 Flash Lite</option></select>
+        </div>
+        <div class="row">
+          <div><div class="row-title">Gemini API Key</div><div class="row-desc" id="gemini-key-status">Stored locally in config.yaml.</div></div>
+          <div class="controls"><input id="gemini-api-key" type="password" placeholder="AIza..."><button class="btn" onclick="saveGeminiKey()">Save</button></div>
+        </div>
       </div>
       <div class="panel span-12">
-        <h2>Local Model Stack</h2>
+        <h2>Model Stack</h2>
         <div class="model-grid">
           <div class="model">
             <div class="model-name">Whisper Large v3 Turbo</div>
-            <div class="model-meta">Transcription · local Transformers pipeline</div>
+            <div class="model-meta">Always used for normal transcription before any text engine</div>
             <div class="model-state">ASR</div>
           </div>
           <div class="model">
             <div class="model-name">Qwen 3.5 4B</div>
-            <div class="model-meta">Transcript cleanup and translation · Ollama</div>
+            <div class="model-meta">Optional text engine for transcript cleanup and translation through Ollama</div>
             <div class="model-state">Thinking Off</div>
           </div>
           <div class="model">
-            <div class="model-name">OpenAI Realtime</div>
-            <div class="model-meta">Optional realtime windows when configured</div>
-            <div class="model-state">Optional</div>
+            <div class="model-name">Gemini 3.1 Flash Lite</div>
+            <div class="model-meta">Optional text engine for normal polishing and translation after Whisper</div>
+            <div class="model-state">API Key</div>
           </div>
         </div>
       </div>
@@ -226,6 +235,7 @@ async function openRealtimeCombined() {{ const r = await pywebview.api.open_real
 async function setConfig(key, value) {{ await pywebview.api.set_config(key, value); }}
 async function savePipelineUrl() {{ await setConfig('pipeline_api.url', document.getElementById('pipeline-url').value.trim()); }}
 async function saveOpenAIKey() {{ const el = document.getElementById('openai-api-key'); if (el.value.trim()) await setConfig('openai.api_key', el.value.trim()); el.value=''; init(); }}
+async function saveGeminiKey() {{ const el = document.getElementById('gemini-api-key'); if (el.value.trim()) await setConfig('gemini.api_key', el.value.trim()); el.value=''; init(); }}
 async function loadStats() {{
   const s = await pywebview.api.get_stats();
   document.getElementById('today-words').textContent = (s.today_words || 0).toLocaleString();
@@ -263,8 +273,10 @@ async function init() {{
   document.getElementById('input-source').value = cfg.recorder?.input_mode || 'microphone';
   document.getElementById('target-language').value = cfg.target_language || 'zh';
   document.getElementById('postprocess').value = String(cfg.postprocess !== false);
+  document.getElementById('ai-provider').value = cfg.ai_provider || 'qwen';
   document.getElementById('pipeline-url').value = cfg.pipeline_api?.url || '';
   document.getElementById('openai-key-status').textContent = cfg.openai?.has_api_key ? 'API key saved locally in config.yaml.' : 'No API key saved.';
+  document.getElementById('gemini-key-status').textContent = cfg.gemini?.has_api_key ? 'Gemini API key saved locally in config.yaml.' : 'No Gemini API key saved.';
   loadStats(); pollStatus();
 }}
 window.addEventListener('pywebviewready', init);

@@ -13,12 +13,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hotkey": {"transcribe": "ctrl+`", "translate": "ctrl+b"},
     "target_language": "zh",
     "postprocess": True,
+    "ai_provider": "qwen",
     "pipeline_api": {"url": "ws://127.0.0.1:8765/ws/pipeline", "timeout": 300},
     "recorder": {"sample_rate": 16000, "channels": 1, "input_mode": "system_audio"},
     "realtime": {"show_partial_words": False},
     "hotwords_file": "data/hotwords.txt",
     "history_file": "data/history.json",
     "openai": {"api_key": ""},
+    "gemini": {"api_key": "", "model": "gemini-3.1-flash-lite"},
 }
 
 
@@ -94,4 +96,8 @@ class ConfigStore:
         if isinstance(cfg.get("openai"), dict):
             cfg["openai"]["has_api_key"] = bool(key)
             cfg["openai"]["api_key"] = ""
+        gemini_key = get_nested(cfg, "gemini.api_key", "")
+        if isinstance(cfg.get("gemini"), dict):
+            cfg["gemini"]["has_api_key"] = bool(gemini_key)
+            cfg["gemini"]["api_key"] = ""
         return cfg

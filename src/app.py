@@ -288,6 +288,11 @@ class ToddTranscriptApp:
             "translate": mode == "translate",
             "postprocess": self.config.get("postprocess", True),
             "skip_gpt": bool(mode != "translate" and self.config.get("postprocess", True) is False),
+            "ai_provider": self.config.get("ai_provider", "qwen"),
+            "gemini": {
+                "api_key": self.config.get("gemini.api_key", ""),
+                "model": self.config.get("gemini.model", "gemini-3.1-flash-lite"),
+            },
             "hotwords": "\n".join(self.hotwords.get_all()),
             "sample_rate": sample_rate,
             "channels": channels,
@@ -350,6 +355,8 @@ class AppAPI:
             self.app._register_hotkeys()
         if key == "openai.api_key" and value:
             os.environ["OPENAI_API_KEY"] = str(value)
+        if key == "gemini.api_key" and value:
+            os.environ["GEMINI_API_KEY"] = str(value)
         return cfg
 
     def save_hotkey(self, mode: str, combo: str) -> dict[str, Any]:

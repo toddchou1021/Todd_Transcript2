@@ -21,6 +21,8 @@ PORT = int(os.environ.get("TODD_PIPELINE_PORT", "8765"))
 WHISPER_MODEL = os.environ.get("TODD_WHISPER_MODEL", "openai/whisper-large-v3-turbo")
 QWEN_MODEL = os.environ.get("TODD_QWEN_MODEL", "qwen3.5:4b")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
+GEMINI_MODEL = os.environ.get("TODD_GEMINI_MODEL", "gemini-3.1-flash-lite")
+GEMINI_API_URL = os.environ.get("TODD_GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent")
 
 
 @dataclass
@@ -216,11 +218,117 @@ class OllamaPostprocessor:
             return transcript, round(time.time() - started, 3), f"error:{exc}"
 
 
+class GeminiTextPostprocessor:
+    def __init__(self, model: str, api_url_template: str, timeout: float) -> None:
+        self.model = model
+        self.api_url_template = api_url_template
+        self.timeout = timeout
+
+    def generate(self, prompt: str, config: dict[str, Any]) -> str:
+        api_key = gemini_api_key(config)
+        if not api_key:
+            raise RuntimeError("Enter a Gemini API key in Settings before using Gemini mode.")
+
+        model = gemini_model(config) or self.model
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}],
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.2,
+                "thinkingConfig": {"thinkingLevel": "low"},
+            },
+        }
+        url = self.api_url_template.format(model=model)
+        response = requests.post(
+            url,
+            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+            json=payload,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return gemini_response_text(response.json()).strip()
+
+    def process(self, transcript: str, config: dict[str, Any]) -> tuple[str, float, str]:
+        if not transcript.strip():
+            return transcript, 0.0, "gemini:empty"
+        if should_skip_gpt(config):
+            return transcript, 0.0, "skipped"
+
+        started = time.time()
+        try:
+            if is_translate_session(config):
+                target = str(config.get("target_language") or "en")
+                target_instruction = target
+                if target.lower() in {"zh", "zh-tw", "traditional chinese", "chinese"}:
+                    target_instruction = "Traditional Chinese (Taiwan). Use Traditional Chinese characters only, not Simplified Chinese."
+                prompt = (
+                    "You are a transcript translation engine. Return only the translated text. "
+                    "Do not answer the transcript, do not explain, do not add labels, and do not include thinking.\n\n"
+                    f"Translate this transcript to {target_instruction}. Keep names, product names, and technical terms accurate.\n\n"
+                    f"<transcript>\n{transcript}\n</transcript>"
+                )
+                mode = "gemini_translate"
+            else:
+                hotwords = str(config.get("hotwords") or "").strip()
+                prompt = (
+                    "You are a transcript cleanup engine for direct text insertion. "
+                    "Fix obvious ASR mistakes, punctuation, casing, and spacing. Preserve the user's language. "
+                    "If the transcript is Chinese, return Traditional Chinese characters for Taiwan only; do not use Simplified Chinese. "
+                    "Do not answer the transcript. Do not summarize. Do not add new information. "
+                    "Do not add labels. Return only the cleaned transcript text.\n\n"
+                    f"<transcript>\n{transcript}\n</transcript>\n\n"
+                    f"<hotwords>\n{hotwords}\n</hotwords>\n\n"
+                    "Return only the final cleaned text."
+                )
+                mode = "gemini_polish"
+
+            result = self.generate(prompt, config)
+            if not result:
+                return transcript, round(time.time() - started, 3), f"{mode}:empty"
+            return result, round(time.time() - started, 3), mode
+        except Exception as exc:
+            logging.exception("Gemini postprocess failed")
+            return transcript, round(time.time() - started, 3), f"error:{exc}"
+
+
 def strip_thinking(text: str) -> str:
     marker = "</think>"
     if marker in text:
         text = text.split(marker, 1)[1]
     return text.strip()
+
+
+def gemini_api_key(config: dict[str, Any]) -> str:
+    gemini = config.get("gemini")
+    if isinstance(gemini, dict):
+        key = str(gemini.get("api_key") or "").strip()
+        if key:
+            return key
+    return os.environ.get("GEMINI_API_KEY", "").strip()
+
+
+def gemini_model(config: dict[str, Any]) -> str:
+    gemini = config.get("gemini")
+    if isinstance(gemini, dict):
+        model = str(gemini.get("model") or "").strip()
+        if model:
+            return model
+    return GEMINI_MODEL
+
+
+def gemini_response_text(data: dict[str, Any]) -> str:
+    candidates = data.get("candidates") or []
+    if not candidates:
+        raise RuntimeError("Gemini returned no candidates.")
+    parts = ((candidates[0].get("content") or {}).get("parts") or [])
+    text = "".join(str(part.get("text") or "") for part in parts)
+    if not text.strip():
+        raise RuntimeError("Gemini returned an empty response.")
+    return text
 
 
 def normalize_ollama_chat_url(url: str) -> str:
@@ -241,6 +349,22 @@ def is_translate_session(config: dict[str, Any]) -> bool:
         return True
     target = config.get("target_language")
     return isinstance(target, str) and bool(target.strip())
+
+
+def ai_provider(config: dict[str, Any]) -> str:
+    provider = str(config.get("ai_provider") or "qwen").strip().lower()
+    return "gemini" if provider == "gemini" else "qwen"
+
+
+def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
+    clean = dict(config)
+    for key in ("gemini", "openai"):
+        value = clean.get(key)
+        if isinstance(value, dict):
+            clean[key] = dict(value)
+            if clean[key].get("api_key"):
+                clean[key]["api_key"] = "***"
+    return clean
 
 
 def language_from_config(config: dict[str, Any]) -> str | None:
@@ -266,6 +390,7 @@ async def handle_client(
     ws: websockets.ServerConnection,
     transcriber: WhisperTranscriber,
     postprocessor: OllamaPostprocessor,
+    gemini_processor: GeminiTextPostprocessor,
 ) -> None:
     session = SessionState()
     peer = getattr(ws, "remote_address", None)
@@ -286,12 +411,12 @@ async def handle_client(
             msg_type = payload.get("type")
             if msg_type == "hello":
                 logging.info("Client hello: %s", payload)
-                await send_json(ws, {"type": "hello_ok", "backend_version": "1.0.2"})
+                await send_json(ws, {"type": "hello_ok", "backend_version": "1.0.3"})
                 continue
 
             if msg_type == "start":
                 session = SessionState(config=dict(payload.get("config") or {}))
-                logging.info("Session started: %s", session.config)
+                logging.info("Session started: %s", sanitize_config(session.config))
                 continue
 
             if msg_type == "warmup":
@@ -299,7 +424,7 @@ async def handle_client(
                 continue
 
             if msg_type == "stop":
-                await process_stop(ws, transcriber, postprocessor, session)
+                await process_stop(ws, transcriber, postprocessor, gemini_processor, session)
                 session = SessionState()
                 continue
 
@@ -318,6 +443,7 @@ async def process_stop(
     ws: websockets.ServerConnection,
     transcriber: WhisperTranscriber,
     postprocessor: OllamaPostprocessor,
+    gemini_processor: GeminiTextPostprocessor,
     session: SessionState,
 ) -> None:
     started = time.time()
@@ -336,6 +462,11 @@ async def process_stop(
         text = await asyncio.to_thread(transcriber.transcribe, wav_path, language)
         asr_elapsed = round(time.time() - started, 3)
 
+        if ai_provider(session.config) == "gemini":
+            final_text, gpt_elapsed, gpt_mode = await asyncio.to_thread(gemini_processor.process, text, session.config)
+        else:
+            final_text, gpt_elapsed, gpt_mode = await asyncio.to_thread(postprocessor.process, text, session.config)
+
         await send_json(ws, {"type": "asr_delta", "text": text})
         await send_json(
             ws,
@@ -347,7 +478,6 @@ async def process_stop(
             },
         )
 
-        final_text, gpt_elapsed, gpt_mode = await asyncio.to_thread(postprocessor.process, text, session.config)
         total_elapsed = round(time.time() - started, 3)
 
         await send_json(ws, {"type": "gpt_delta", "text": final_text})
@@ -417,9 +547,10 @@ async def main_async(args: argparse.Namespace) -> None:
         args.ollama_timeout,
         not args.no_ollama,
     )
+    gemini_processor = GeminiTextPostprocessor(args.gemini_model, args.gemini_api_url, args.gemini_timeout)
 
     async def handler(ws: websockets.ServerConnection) -> None:
-        await handle_client(ws, transcriber, postprocessor)
+        await handle_client(ws, transcriber, postprocessor, gemini_processor)
 
     async with websockets.serve(
         handler,
@@ -443,6 +574,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ollama-model", default=QWEN_MODEL)
     parser.add_argument("--ollama-url", default=OLLAMA_URL)
     parser.add_argument("--ollama-timeout", type=float, default=float(os.environ.get("TODD_OLLAMA_TIMEOUT", "60")))
+    parser.add_argument("--gemini-model", default=GEMINI_MODEL)
+    parser.add_argument("--gemini-api-url", default=GEMINI_API_URL)
+    parser.add_argument("--gemini-timeout", type=float, default=float(os.environ.get("TODD_GEMINI_TIMEOUT", "120")))
     parser.add_argument("--no-ollama", action="store_true")
     parser.add_argument("--log-level", default=os.environ.get("TODD_BACKEND_LOG_LEVEL", "INFO"))
     args, _unknown = parser.parse_known_args()
