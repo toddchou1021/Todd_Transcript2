@@ -411,7 +411,7 @@ async def handle_client(
             msg_type = payload.get("type")
             if msg_type == "hello":
                 logging.info("Client hello: %s", payload)
-                await send_json(ws, {"type": "hello_ok", "backend_version": "1.0.3"})
+                await send_json(ws, {"type": "hello_ok", "backend_version": "1.0.4"})
                 continue
 
             if msg_type == "start":

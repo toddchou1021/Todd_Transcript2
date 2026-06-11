@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
-$Version = "1.0.3"
+$Version = "1.0.4"
 $AppName = "Todd Transcript"
 $SetupName = "ToddTranscriptSetup-$Version"
 $AppExe = Join-Path $Root "dist\$AppName.exe"
@@ -19,7 +19,7 @@ if ($LASTEXITCODE -ne 0) { throw "Dependency install failed." }
 & $Python -m pip install pyinstaller
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller install failed." }
 
-Get-Process | Where-Object { $_.ProcessName -in @("Todd Transcript", "ToddTranscriptSetup-1.0.1", "ToddTranscriptSetup-1.0.2", "ToddTranscriptSetup-1.0.3") } | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process | Where-Object { $_.ProcessName -in @("Todd Transcript", "ToddTranscriptSetup-1.0.1", "ToddTranscriptSetup-1.0.2", "ToddTranscriptSetup-1.0.3", "ToddTranscriptSetup-1.0.4") } | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 Remove-Item -Force $AppExe, $HelperExe, $SetupExe -ErrorAction SilentlyContinue
 

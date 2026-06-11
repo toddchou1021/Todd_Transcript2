@@ -18,11 +18,17 @@ from .paths import HELPER_PATH
 
 
 class AudioRecorder:
-    def __init__(self, sample_rate: int = 16000, channels: int = 1, input_mode: str = "microphone"):
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        channels: int = 1,
+        input_mode: str = "microphone",
+        chunk_frames: int = 1024,
+    ):
         self.sample_rate = int(sample_rate)
         self.channels = int(channels)
         self.input_mode = input_mode
-        self.chunk_frames = 1024
+        self.chunk_frames = int(chunk_frames)
         self._running = False
         self._thread: threading.Thread | None = None
         self._frames: list[bytes] = []

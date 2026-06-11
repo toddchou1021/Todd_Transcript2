@@ -16,7 +16,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ai_provider": "qwen",
     "pipeline_api": {"url": "ws://127.0.0.1:8765/ws/pipeline", "timeout": 300},
     "recorder": {"sample_rate": 16000, "channels": 1, "input_mode": "system_audio"},
-    "realtime": {"show_partial_words": False},
+    "realtime": {
+        "show_partial_words": False,
+        "asr_provider": "openai",
+        "translation_provider": "openai",
+        "gemini_translate_model": "gemini-3.5-live-translate-preview",
+    },
     "hotwords_file": "data/hotwords.txt",
     "history_file": "data/history.json",
     "openai": {"api_key": ""},

@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 APP_NAME = "Todd Transcript"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 
 
 def _log(message: str) -> None:

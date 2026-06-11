@@ -139,6 +139,14 @@ nav {{ grid-column:1; grid-row:2; display:flex; flex-direction:column; backgroun
           <div><div class="row-title">Gemini API Key</div><div class="row-desc" id="gemini-key-status">Stored locally in config.yaml.</div></div>
           <div class="controls"><input id="gemini-api-key" type="password" placeholder="AIza..."><button class="btn" onclick="saveGeminiKey()">Save</button></div>
         </div>
+        <div class="row">
+          <div><div class="row-title">Realtime ASR</div><div class="row-desc">Select the model used by ASR and ASR + Translate windows.</div></div>
+          <select id="realtime-asr-provider" onchange="setConfig('realtime.asr_provider', this.value)"><option value="openai">OpenAI Realtime</option><option value="gemini">Gemini 3.5 Live Translate</option></select>
+        </div>
+        <div class="row">
+          <div><div class="row-title">Realtime Translation</div><div class="row-desc">Select the model used by Translate and ASR + Translate windows.</div></div>
+          <select id="realtime-translation-provider" onchange="setConfig('realtime.translation_provider', this.value)"><option value="openai">OpenAI Realtime</option><option value="gemini">Gemini 3.5 Live Translate</option></select>
+        </div>
       </div>
       <div class="panel span-12">
         <h2>Model Stack</h2>
@@ -274,6 +282,8 @@ async function init() {{
   document.getElementById('target-language').value = cfg.target_language || 'zh';
   document.getElementById('postprocess').value = String(cfg.postprocess !== false);
   document.getElementById('ai-provider').value = cfg.ai_provider || 'qwen';
+  document.getElementById('realtime-asr-provider').value = cfg.realtime?.asr_provider || 'openai';
+  document.getElementById('realtime-translation-provider').value = cfg.realtime?.translation_provider || 'openai';
   document.getElementById('pipeline-url').value = cfg.pipeline_api?.url || '';
   document.getElementById('openai-key-status').textContent = cfg.openai?.has_api_key ? 'API key saved locally in config.yaml.' : 'No API key saved.';
   document.getElementById('gemini-key-status').textContent = cfg.gemini?.has_api_key ? 'Gemini API key saved locally in config.yaml.' : 'No Gemini API key saved.';

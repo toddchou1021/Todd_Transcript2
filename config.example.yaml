@@ -13,6 +13,9 @@ recorder:
   input_mode: system_audio
 realtime:
   show_partial_words: false
+  asr_provider: openai
+  translation_provider: openai
+  gemini_translate_model: gemini-3.5-live-translate-preview
 hotwords_file: data/hotwords.txt
 history_file: data/history.json
 openai:
