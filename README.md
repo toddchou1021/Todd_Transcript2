@@ -220,17 +220,13 @@ The main local settings live in `config.yaml`. The safe template is `config.exam
 - `realtime.translation_provider` 可選擇即時翻譯使用 `openai` 或 `gemini`。
 - `openai.api_key` 只在選用 OpenAI realtime provider 時需要。
 
-## Notes
+## Privacy
 
-- This rewrite intentionally omits screenshot capture, foreground-window context capture, context popups, and screenshot analysis.
-- Pipeline sessions send only audio, hotwords, language, and processing configuration.
-- `config.yaml`, history, hotwords, realtime exports, and cache files are ignored by Git.
+API keys, configuration, history, hotwords, realtime exports, and cache files remain stored locally.
 
 ----------
 
-- 此重寫版本刻意不包含截圖擷取、前景視窗內容擷取、context popup 與截圖分析。
-- Pipeline 工作階段只會送出音訊、hotwords、語言與處理設定。
-- `config.yaml`、歷史紀錄、hotwords、realtime 匯出檔與快取檔都會被 Git 忽略。
+API key、設定、歷史紀錄、hotwords、即時匯出檔與快取檔均保留在本機。
 
 ## License
 
