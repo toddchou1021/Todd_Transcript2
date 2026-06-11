@@ -115,10 +115,10 @@ The local pipeline backend is separate from this desktop client. Download or pre
 For Windows end users, build or use the installer:
 
 ```powershell
-.\scripts\build_windows_installer.ps1
+.\scripts\build_thin_windows_installer.ps1
 ```
 
-The installer output is written to `dist/ToddTranscriptSetup-1.0.4.exe`. It installs a one-click launcher that starts both the desktop app and the bundled local backend. The backend uses `openai/whisper-large-v3-turbo` through Transformers and reuses the normal Hugging Face cache when available. Qwen text processing still requires Ollama with the configured model available locally. Gemini features require a Gemini API key saved in the app.
+The installer output is written to `dist/ToddTranscriptSetup-1.0.4-Thin.exe`. It installs a one-click launcher that starts both the desktop app and the bundled local backend. On first launch, the thin installer prepares the local Python environment and dependencies. The backend uses `openai/whisper-large-v3-turbo` through Transformers and reuses the normal Hugging Face cache when available. Qwen text processing still requires Ollama with the configured model available locally. Gemini features require a Gemini API key saved in the app.
 
 ----------
 
@@ -135,10 +135,10 @@ API key 與執行時產生的檔案會保留在本機的 `config.yaml`、`data/`
 Windows 一般使用者可以建置或使用 installer：
 
 ```powershell
-.\scripts\build_windows_installer.ps1
+.\scripts\build_thin_windows_installer.ps1
 ```
 
-Installer 會輸出到 `dist/ToddTranscriptSetup-1.0.4.exe`。安裝後會提供一鍵啟動器，同時啟動桌面 app 與內建本機 backend。Backend 會透過 Transformers 使用 `openai/whisper-large-v3-turbo`，並在可用時重用一般 Hugging Face cache。Qwen 文字處理仍需要本機 Ollama 已具備設定的模型。Gemini 功能需要在 app 中儲存 Gemini API key。
+Installer 會輸出到 `dist/ToddTranscriptSetup-1.0.4-Thin.exe`。安裝後會提供一鍵啟動器，同時啟動桌面 app 與內建本機 backend。Thin installer 會在首次啟動時準備本機 Python 環境與相依套件。Backend 會透過 Transformers 使用 `openai/whisper-large-v3-turbo`，並在可用時重用一般 Hugging Face cache。Qwen 文字處理仍需要本機 Ollama 已具備設定的模型。Gemini 功能需要在 app 中儲存 Gemini API key。
 
 ## Local Models
 
