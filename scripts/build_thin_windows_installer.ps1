@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
-$Version = "1.0.4"
+$Version = "1.0.5"
 $AppName = "Todd Transcript"
 $SetupName = "ToddTranscriptSetup-$Version-Thin"
 $ThinRoot = Join-Path $Root "build\thin-installer"

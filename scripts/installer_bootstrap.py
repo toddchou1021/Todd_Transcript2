@@ -10,7 +10,7 @@ from pathlib import Path
 
 APP_NAME = "Todd Transcript"
 APP_EXE = f"{APP_NAME}.exe"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 PUBLISHER = "Todd Chou"
 UNINSTALL_KEY = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_NAME}"
 

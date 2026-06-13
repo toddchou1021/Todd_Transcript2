@@ -74,7 +74,7 @@ class RealtimeBaseController:
             if self.state.get("running"):
                 return {"ok": True}
             self._stop_event.clear()
-            self._clear_text_locked()
+            self._prepare_text_for_start_locked()
             self._started_at = time.monotonic()
             self._last_audio_duration = 0.0
             self.state.update(
@@ -224,6 +224,11 @@ class RealtimeBaseController:
     def _clear_text_locked(self) -> None:
         self.state["text"] = ""
 
+    def _prepare_text_for_start_locked(self) -> None:
+        text = str(self.state.get("text") or "").rstrip()
+        if text:
+            self.state["text"] = text + "\n\n"
+
     def _send_json(self, payload: dict[str, Any]) -> None:
         if not self._ws:
             raise RuntimeError("Realtime socket is not connected")
@@ -289,6 +294,16 @@ class RealtimeASRController(RealtimeBaseController):
         self.state["finals"] = []
         self.state["partial"] = ""
         self.state["text"] = ""
+
+    def _prepare_text_for_start_locked(self) -> None:
+        text = str(self.state.get("text") or "").rstrip()
+        if not text:
+            text = self._join_finals(self.state.get("finals") or []).rstrip()
+        if text:
+            text += "\n\n"
+            self.state["finals"] = [text]
+            self.state["text"] = text
+        self.state["partial"] = ""
 
     def get_status(self) -> dict[str, Any]:
         with self._lock:
@@ -466,9 +481,20 @@ class RealtimeASRController(RealtimeBaseController):
                 self.state["status"] = "Transcribing"
 
     def _join_finals(self, finals: list[str]) -> str:
-        if self._active_provider == "gemini":
-            return "".join(str(part) for part in finals if part).strip()
-        return " ".join(" ".join(part.split()) for part in finals if part).strip()
+        result = ""
+        for part in finals:
+            value = str(part or "")
+            if not value:
+                continue
+            if self._active_provider != "gemini":
+                lines = [" ".join(line.split()) for line in value.splitlines()]
+                value = "\n".join(lines)
+                if str(part).endswith("\n"):
+                    value += "\n"
+            if result and not result.endswith("\n") and value:
+                result += "" if self._active_provider == "gemini" else " "
+            result += value
+        return result.strip(" ")
 
     def _show_partial_words(self) -> bool:
         return bool(((self.config.get("realtime") or {}).get("show_partial_words", False)))
@@ -510,6 +536,17 @@ class RealtimeTranslateController(RealtimeBaseController):
         self.state["translation_text"] = ""
         self.state["source_text"] = ""
         self.state["text"] = ""
+
+    def _prepare_text_for_start_locked(self) -> None:
+        translation = str(self.state.get("translation_text") or "").rstrip()
+        source = str(self.state.get("source_text") or "").rstrip()
+        if translation:
+            translation += "\n\n"
+        if source:
+            source += "\n\n"
+        self.state["translation_text"] = translation
+        self.state["source_text"] = source
+        self.state["text"] = translation
 
     def _configured_provider(self) -> str:
         provider = str(((self.config.get("realtime") or {}).get("translation_provider") or "openai")).lower()
