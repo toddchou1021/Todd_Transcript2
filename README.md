@@ -264,4 +264,4 @@ Configuration, API keys, hotwords, history, realtime exports, and cache files ar
 
 ## License
 
-No license file is currently included.
+MIT License. See `LICENSE`.
