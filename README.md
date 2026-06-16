@@ -4,173 +4,181 @@
 
 Speak it. Transcribe it. Translate it.
 
-Todd Transcript is a Windows desktop transcription and translation app for source-based developer use. It records microphone, system audio, or mixed audio, sends audio to a local pipeline backend, and keeps recent output in a searchable history. Optional realtime windows can use OpenAI Realtime or Gemini 3.5 Live Translate for transcription and text translation.
+Todd Transcript is a Windows desktop app for transcription and translation. It records microphone, system audio, or mixed audio, runs normal transcription through Gemini, and keeps recent output in a searchable local history. Realtime transcription and translation use Gemini Live.
 
 Useful for:
 - Turning meetings, videos, or app audio into text.
 - Translating spoken content into a target language.
 - Saving realtime transcript or translation output as Markdown.
 
-Todd Transcript is built with Python and pywebview. The desktop UI, global hotkeys, audio capture, local history, hotwords, and websocket pipeline client are included in this repository.
+Todd Transcript is built with Python and pywebview. The desktop UI, global hotkeys, audio capture, local history, hotwords, bundled backend, and websocket pipeline client are included in this repository.
 
-Local pipeline mode always uses Whisper Large v3 Turbo for normal transcription. For polishing and translation, choose either Qwen 3.5 4B or Gemini 3.1 Flash Lite.
+Normal recording transcription, text polishing, and normal translation use Gemini 3.1 Flash Lite. Realtime ASR and realtime translation use Gemini Live.
 
 ----------
 
 說出來，轉成文字，翻成需要的語言。
 
-Todd Transcript 是一款以原始碼開發模式執行的 Windows 桌面轉錄與翻譯工具。它可以錄製麥克風、系統音訊或混合音訊，將音訊送到本機 pipeline 後端，並把近期輸出保存在可瀏覽的歷史紀錄中。即時語音辨識與即時文字翻譯皆可選擇 OpenAI Realtime 或 Gemini 3.5 Live Translate。
+Todd Transcript 是一款 Windows 桌面轉錄與翻譯工具。它可以錄製麥克風、系統音訊或混合音訊，使用 Gemini 進行一般轉錄，並把近期輸出保存在可瀏覽的本機歷史紀錄中。即時語音辨識與即時翻譯使用 Gemini Live。
 
 適合用來：
 - 將會議、影片或應用程式音訊轉成文字。
 - 將語音內容翻譯成指定目標語言。
 - 將即時轉錄或翻譯結果儲存為 Markdown。
 
-Todd Transcript 使用 Python 與 pywebview 建構。桌面 UI、全域快捷鍵、音訊擷取、本機歷史紀錄、hotwords，以及 websocket pipeline client 都包含在此 repository 中。
+Todd Transcript 使用 Python 與 pywebview 建構。桌面 UI、全域快捷鍵、音訊擷取、本機歷史紀錄、hotwords、內建後端，以及 websocket pipeline client 都包含在此 repository 中。
 
-本機 pipeline 模式一律使用 Whisper Large v3 Turbo 執行一般轉錄；逐字稿整理與翻譯則可選擇 Qwen 3.5 4B 或 Gemini 3.1 Flash Lite。
+一般錄音轉錄、文字整理與一般翻譯使用 Gemini 3.1 Flash Lite。即時語音辨識與即時翻譯使用 Gemini Live。
 
 ## Usage
 
 1. Start Todd Transcript.
 2. Open Settings.
-3. Confirm the pipeline URL, target language, recorder source, and hotkeys.
-4. Press `Ctrl+\`` to start transcription, or click `Start` in the Transcribe card.
-5. Press `Ctrl+B` to start translation, or click `Start` in the Translate card.
-6. Use the History page to review or delete saved output.
-7. Open Realtime ASR or Realtime Translate when you want live transcript windows.
+3. Confirm the UI language, target language, recorder source, and hotkeys.
+4. Open Realtime ASR, Realtime Translate, or ASR + Translate when you want live windows.
+5. Press `Ctrl+Alt+F` to start normal recording transcription, or click `Start` in the Transcribe row.
+6. Press `Ctrl+Alt+D` to start normal recording translation, or click `Start` in the Translate row.
+7. Use the History page to review, copy, or delete saved output.
 8. Save realtime output to `realtime_exports/` when needed.
 
 ----------
 
 1. 啟動 Todd Transcript。
 2. 開啟 Settings。
-3. 確認 pipeline URL、目標語言、錄音來源與快捷鍵。
-4. 按 `Ctrl+\`` 開始轉錄，或在 Transcribe 區塊點選 `Start`。
-5. 按 `Ctrl+B` 開始翻譯，或在 Translate 區塊點選 `Start`。
-6. 使用 History 頁面查看或刪除已儲存輸出。
-7. 需要即時顯示時，開啟 Realtime ASR 或 Realtime Translate 視窗。
+3. 確認介面語言、目標語言、錄音來源與快捷鍵。
+4. 需要即時視窗時，開啟 Realtime ASR、Realtime Translate 或 ASR + Translate。
+5. 按 `Ctrl+Alt+F` 開始一般錄音轉錄，或在 Transcribe 列點選 `Start`。
+6. 按 `Ctrl+Alt+D` 開始一般錄音翻譯，或在 Translate 列點選 `Start`。
+7. 使用 History 頁面查看、複製或刪除已儲存輸出。
 8. 視需要將即時輸出儲存到 `realtime_exports/`。
 
 ## Features
 
-- Desktop settings window with transcribe, translate, history, hotword, and settings pages.
-- Configurable global hotkeys for transcription and translation.
+- Desktop app with speech control, history, hotwords, and runtime settings.
+- Realtime ASR, realtime translation, and combined realtime windows.
+- Configurable global hotkeys for normal recording transcription and translation.
 - Microphone, system audio, and mixed audio capture support.
-- Local websocket pipeline mode for transcription, translation, and post-processing.
-- Normal transcription always uses local Whisper Large v3 Turbo.
-- Selectable text engine for polishing and translation: Qwen 3.5 4B or Gemini 3.1 Flash Lite.
+- English and Traditional Chinese UI display language.
+- Gemini 3.1 Flash Lite for normal recording transcription, text polishing, and normal translation.
+- Gemini Live realtime transcription and translation.
 - Hotwords stored in `data/hotwords.txt` for local recognition hints.
 - Local history stored in `data/history.json`.
-- Realtime transcription and translation using OpenAI Realtime or Gemini 3.5 Live Translate.
-- Gemini realtime mode displays text transcripts only; generated translated audio is discarded.
 - Markdown export for realtime transcript and translation sessions.
 
 ----------
 
-- 桌面設定視窗包含轉錄、翻譯、歷史紀錄、hotword 與設定頁面。
-- 可自訂轉錄與翻譯的全域快捷鍵。
+- 桌面 app 包含語音控制、歷史紀錄、hotwords 與執行設定。
+- 支援即時語音辨識、即時翻譯，以及合併即時視窗。
+- 可自訂一般錄音轉錄與翻譯的全域快捷鍵。
 - 支援麥克風、系統音訊與混合音訊擷取。
-- 透過本機 websocket pipeline 執行轉錄、翻譯與後處理。
-- 一般轉錄一律使用本機 Whisper Large v3 Turbo。
-- 整理與翻譯可選擇文字引擎：Qwen 3.5 4B 或 Gemini 3.1 Flash Lite。
+- 介面顯示語言可選英文或繁體中文。
+- Gemini 3.1 Flash Lite 用於一般錄音轉錄、文字整理與一般翻譯。
+- 即時轉錄與即時翻譯使用 Gemini Live。
 - Hotwords 會儲存在 `data/hotwords.txt`，作為本機辨識提示。
 - 歷史紀錄會儲存在 `data/history.json`。
-- 即時轉錄與翻譯可選用 OpenAI Realtime 或 Gemini 3.5 Live Translate。
-- Gemini 即時模式只顯示文字；app 不播放或儲存產生的翻譯音訊。
 - 可將即時轉錄與翻譯工作階段匯出為 Markdown。
+
+## Models and Services
+
+### Cloud API Services
+
+- Normal recording transcription: Gemini 3.1 Flash Lite, `gemini-3.1-flash-lite`.
+- Text polishing and normal translation: Gemini 3.1 Flash Lite.
+- Realtime ASR and realtime translation: Gemini Live, `gemini-3.5-live-translate-preview`.
+- These Gemini features require a Gemini API key saved in the app.
+
+Normal recording audio is sent to Gemini 3.1 Flash Lite for transcription. If text polishing or translation is used, the transcript text is also sent to Gemini. Realtime modes send realtime audio to Gemini Live.
+
+### Model Use In Todd Transcript
+
+| App function | Model or service |
+| --- | --- |
+| Normal recording transcription | Gemini 3.1 Flash Lite, `gemini-3.1-flash-lite` |
+| Normal transcript polishing | Gemini 3.1 Flash Lite, `gemini-3.1-flash-lite` |
+| Normal recording translation | Gemini 3.1 Flash Lite transcription, then Gemini 3.1 Flash Lite translation |
+| Realtime ASR window | Gemini Live, `gemini-3.5-live-translate-preview` input transcription |
+| Realtime Translate window | Gemini Live, `gemini-3.5-live-translate-preview` output transcription |
+| Realtime ASR + Translate window | Gemini Live for both realtime transcript and translation text |
+
+### Gemini API Key
+
+1. Open [Google AI Studio API keys](https://aistudio.google.com/app/apikey).
+2. Sign in with your Google account.
+3. Create an API key. If AI Studio asks for a project, create or select one.
+4. Copy the key.
+5. In Todd Transcript, open Settings and save it in the Gemini API Key field.
+
+For better security, restrict the key to the Gemini API in Google AI Studio after creating it. Do not commit `config.yaml`; it stores your local key.
+
+### Current Gemini Limits
+
+Google says Gemini API limits can vary by project, account tier, and time, and active limits should be checked in Google AI Studio. As of this README update, the current expected limits for this app are:
+
+- Gemini 3.1 Flash Lite: 500 requests per day.
+- Gemini Live `gemini-3.5-live-translate-preview`: unlimited daily requests.
+
+----------
+
+### 雲端 API 服務
+
+- 一般錄音轉錄：Gemini 3.1 Flash Lite，`gemini-3.1-flash-lite`。
+- 文字整理與一般翻譯：Gemini 3.1 Flash Lite。
+- 即時語音辨識與即時翻譯：Gemini Live，`gemini-3.5-live-translate-preview`。
+- 這些 Gemini 功能需要在 app 中儲存 Gemini API key。
+
+一般錄音音訊會送到 Gemini 3.1 Flash Lite 進行轉錄；使用文字整理或翻譯時，逐字稿文字也會送到 Gemini。即時模式會將即時音訊送到 Gemini Live。
+
+### Todd Transcript 使用的模型
+
+| App 功能 | 模型或服務 |
+| --- | --- |
+| 一般錄音轉錄 | Gemini 3.1 Flash Lite，`gemini-3.1-flash-lite` |
+| 一般逐字稿整理 | Gemini 3.1 Flash Lite，`gemini-3.1-flash-lite` |
+| 一般錄音翻譯 | Gemini 3.1 Flash Lite 轉錄，然後使用 Gemini 3.1 Flash Lite 翻譯 |
+| Realtime ASR 視窗 | Gemini Live，`gemini-3.5-live-translate-preview` 輸入逐字稿 |
+| Realtime Translate 視窗 | Gemini Live，`gemini-3.5-live-translate-preview` 輸出逐字稿 |
+| Realtime ASR + Translate 視窗 | Gemini Live 同時提供即時逐字稿與翻譯文字 |
+
+### Gemini API Key
+
+1. 開啟 [Google AI Studio API keys](https://aistudio.google.com/app/apikey)。
+2. 使用 Google 帳號登入。
+3. 建立 API key；如果 AI Studio 要求選擇 project，請建立或選擇一個 project。
+4. 複製 API key。
+5. 在 Todd Transcript 中開啟 Settings，並將 key 儲存在 Gemini API Key 欄位。
+
+為了提高安全性，建立 key 後可在 Google AI Studio 將它限制為只能使用 Gemini API。請勿 commit `config.yaml`；它會儲存你的本機 API key。
+
+### 目前 Gemini 使用限制
+
+Google 表示 Gemini API 限制可能因 project、帳戶層級與時間而不同，實際可用限制應以 Google AI Studio 顯示為準。截至本 README 更新時，此 app 目前預期限制如下：
+
+- Gemini 3.1 Flash Lite：每天 500 次 requests。
+- Gemini Live `gemini-3.5-live-translate-preview`：每天 requests 無上限。
 
 ## Requirements
 
 - Windows
-- Python 3.11 or newer recommended
-- A local pipeline websocket service at `ws://127.0.0.1:8765/ws/pipeline`
-- Local Whisper model weights, typically `openai/whisper-large-v3-turbo`, available to the pipeline backend
-- Qwen 3.5 4B available to the pipeline backend through Ollama when using Qwen text processing
-- A Gemini API key when using Gemini for polishing, normal translation, realtime ASR, or realtime translation
-- An OpenAI API key when using OpenAI realtime ASR or translation
+- Python 3.11 or newer recommended for source mode and local builds
+- A Gemini API key for transcription, polishing, translation, and realtime features
+
+The thin installer can prepare the local Python environment on first launch. Source mode requires installing dependencies from `requirements.txt`.
 
 ----------
 
 - Windows
-- 建議使用 Python 3.11 或更新版本
-- 本機 pipeline websocket 服務：`ws://127.0.0.1:8765/ws/pipeline`
-- Pipeline 後端可使用的本機 Whisper 模型權重，通常是 `openai/whisper-large-v3-turbo`
-- 使用 Qwen 文字處理時，Pipeline 後端需要可透過 Ollama 執行的 Qwen 3.5 4B
-- 使用 Gemini 整理、一般翻譯、即時 ASR 或即時翻譯時需要 Gemini API key
-- 使用 OpenAI 即時 ASR 或即時翻譯時需要 OpenAI API key
+- 從原始碼執行或本機建置時，建議使用 Python 3.11 或更新版本
+- 使用轉錄、文字整理、翻譯與即時功能時需要 Gemini API key
+
+Thin installer 可在首次啟動時準備本機 Python 環境。從原始碼執行時，需要先安裝 `requirements.txt` 中的相依套件。
 
 ## Installation
 
-This repository is currently source-first. Create your local config from the example file:
-
-```powershell
-Copy-Item config.example.yaml config.yaml
-```
-
-API keys and runtime files stay local in `config.yaml`, `data/`, and `realtime_exports/`.
-
-The local pipeline backend is separate from this desktop client. Download or prepare the Whisper and Qwen models in that backend environment, then keep `pipeline_api.url` pointed at the running websocket service.
-
-For Windows end users, build or use the installer:
-
-```powershell
-.\scripts\build_thin_windows_installer.ps1
-```
-
-The installer output is written to `dist/ToddTranscriptSetup-1.0.5-Thin.exe`. It installs a one-click launcher that starts both the desktop app and the bundled local backend. On first launch, the thin installer prepares the local Python environment and dependencies. The backend uses `openai/whisper-large-v3-turbo` through Transformers and reuses the normal Hugging Face cache when available. Qwen text processing still requires Ollama with the configured model available locally. Gemini features require a Gemini API key saved in the app.
-
-----------
-
-此 repository 目前以原始碼執行為主。請先從範例檔建立本機設定：
-
-```powershell
-Copy-Item config.example.yaml config.yaml
-```
-
-API key 與執行時產生的檔案會保留在本機的 `config.yaml`、`data/` 與 `realtime_exports/`。
-
-本機 pipeline 後端與此桌面 client 分開執行。請在後端環境下載或準備 Whisper 與 Qwen 模型，然後讓 `pipeline_api.url` 指向正在執行的 websocket 服務。
-
-Windows 一般使用者可以建置或使用 installer：
-
-```powershell
-.\scripts\build_thin_windows_installer.ps1
-```
-
-Installer 會輸出到 `dist/ToddTranscriptSetup-1.0.5-Thin.exe`。安裝後會提供一鍵啟動器，同時啟動桌面 app 與內建本機 backend。Thin installer 會在首次啟動時準備本機 Python 環境與相依套件。Backend 會透過 Transformers 使用 `openai/whisper-large-v3-turbo`，並在可用時重用一般 Hugging Face cache。Qwen 文字處理仍需要本機 Ollama 已具備設定的模型。Gemini 功能需要在 app 中儲存 Gemini API key。
-
-## Local Models
-
-Local transcribe and translate mode uses the bundled backend at `pipeline_api.url`.
-
-- Normal ASR: `openai/whisper-large-v3-turbo`
-- Text engine option: Qwen 3.5 4B through Ollama
-- Text engine option: Gemini 3.1 Flash Lite for polishing and translation
-- Realtime ASR: OpenAI `gpt-realtime-whisper` or Gemini `gemini-3.5-live-translate-preview` input transcription
-- Realtime translation: OpenAI `gpt-realtime-translate` or Gemini `gemini-3.5-live-translate-preview`
-
-The desktop app does not run model inference directly. The bundled backend runs Whisper through Transformers, then sends the transcript to either Ollama/Qwen or Gemini for polishing and translation.
-
-----------
-
-本機轉錄與翻譯模式會使用 `pipeline_api.url` 指向的內建 backend。
-
-- 一般語音辨識：`openai/whisper-large-v3-turbo`
-- 文字引擎選項：透過 Ollama 執行 Qwen 3.5 4B
-- 文字引擎選項：Gemini 3.1 Flash Lite 用於整理與翻譯
-- 即時 ASR：OpenAI `gpt-realtime-whisper` 或 Gemini `gemini-3.5-live-translate-preview` 輸入逐字稿
-- 即時翻譯：OpenAI `gpt-realtime-translate` 或 Gemini `gemini-3.5-live-translate-preview`
-
-桌面 app 本身不直接執行模型推論。內建 backend 會透過 Transformers 執行 Whisper，然後依設定將逐字稿送到 Ollama/Qwen 或 Gemini 進行整理與翻譯。
-
-## Developer Mode
-
-To run the project from source:
+### Run From Source
 
 ```powershell
 python -m pip install -r requirements.txt
-python main.py
+python launcher.py
 ```
 
 You can also use:
@@ -179,13 +187,27 @@ You can also use:
 .\Start Todd Transcript Dev.ps1
 ```
 
+Create or edit local settings from the example file when needed:
+
+```powershell
+Copy-Item config.example.yaml config.yaml
+```
+
+### Build The Windows Installer
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\build_thin_windows_installer.ps1
+```
+
+The installer output is written to `dist/ToddTranscriptSetup-1.0.6-Thin.exe`. It installs a launcher that starts both the desktop app and the bundled local backend. On first launch, the thin installer prepares the local Python environment and dependencies. This can take several minutes.
+
 ----------
 
-若要從原始碼執行專案：
+### 從原始碼執行
 
 ```powershell
 python -m pip install -r requirements.txt
-python main.py
+python launcher.py
 ```
 
 也可以使用：
@@ -194,39 +216,51 @@ python main.py
 .\Start Todd Transcript Dev.ps1
 ```
 
+需要時可從範例檔建立或編輯本機設定：
+
+```powershell
+Copy-Item config.example.yaml config.yaml
+```
+
+### 建置 Windows Installer
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\build_thin_windows_installer.ps1
+```
+
+Installer 會輸出到 `dist/ToddTranscriptSetup-1.0.6-Thin.exe`。它會安裝一個 launcher，同時啟動桌面 app 與內建本機後端。Thin installer 會在首次啟動時準備本機 Python 環境與相依套件，可能需要數分鐘。
+
 ## Configuration
 
 The main local settings live in `config.yaml`. The safe template is `config.example.yaml`.
 
-- `pipeline_api.url` controls the local websocket backend.
+- `ui_language` controls the app display language: `en` or `zh`.
 - `target_language` controls translation output language.
-- `recorder.input_mode` controls the default audio source.
-- `ai_provider` selects `qwen` or `gemini` for post-Whisper text processing.
-- `gemini.api_key` is only needed when Gemini is selected for polishing or translation.
-- `realtime.asr_provider` selects `openai` or `gemini` for realtime transcription.
-- `realtime.translation_provider` selects `openai` or `gemini` for realtime translation.
-- `openai.api_key` is needed when an OpenAI realtime provider is selected.
+- `recorder.input_mode` controls the default audio source: `microphone`, `system_audio`, or `both`.
+- `hotkey.transcribe` controls the normal transcription hotkey.
+- `hotkey.translate` controls the normal translation hotkey.
+- `pipeline_api.url` controls the local backend websocket endpoint.
+- `gemini.api_key` stores the Gemini API key locally.
 
 ----------
 
 主要本機設定位於 `config.yaml`，安全範本則是 `config.example.yaml`。
 
-- `pipeline_api.url` 控制本機 websocket 後端。
+- `ui_language` 控制 app 顯示語言：`en` 或 `zh`。
 - `target_language` 控制翻譯輸出的目標語言。
-- `recorder.input_mode` 控制預設音訊來源。
-- `ai_provider` 可選擇 Whisper 之後的文字處理使用 `qwen` 或 `gemini`。
-- `gemini.api_key` 只在選用 Gemini 整理或翻譯時需要。
-- `realtime.asr_provider` 可選擇即時轉錄使用 `openai` 或 `gemini`。
-- `realtime.translation_provider` 可選擇即時翻譯使用 `openai` 或 `gemini`。
-- `openai.api_key` 只在選用 OpenAI realtime provider 時需要。
+- `recorder.input_mode` 控制預設音訊來源：`microphone`、`system_audio` 或 `both`。
+- `hotkey.transcribe` 控制一般轉錄快捷鍵。
+- `hotkey.translate` 控制一般翻譯快捷鍵。
+- `pipeline_api.url` 控制本機後端 websocket 端點。
+- `gemini.api_key` 會在本機儲存 Gemini API key。
 
 ## Privacy
 
-API keys, configuration, history, hotwords, realtime exports, and cache files remain stored locally.
+Configuration, API keys, hotwords, history, realtime exports, and cache files are stored locally. Normal recording transcription, polishing, translation, and realtime features send transcript text or audio to Gemini APIs.
 
 ----------
 
-API key、設定、歷史紀錄、hotwords、即時匯出檔與快取檔均保留在本機。
+設定、API key、hotwords、歷史紀錄、即時匯出檔與快取檔均保留在本機。一般錄音轉錄、文字整理、翻譯與即時功能會將逐字稿文字或音訊送到 Gemini API。
 
 ## License
 

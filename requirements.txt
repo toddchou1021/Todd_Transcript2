@@ -1,7 +1,5 @@
 keyboard==0.13.5
-accelerate>=1.0
 numpy>=2.0
-openai>=2.0
 pyaudio>=0.2.14
 PyAudioWPatch>=0.2.12.8
 pyperclip>=1.9
@@ -9,9 +7,6 @@ pywebview>=6.0
 PyYAML>=6.0
 pystray>=0.19.5
 requests>=2.32
-safetensors>=0.5
 soundcard>=0.4
-torch>=2.6
-transformers>=4.50
 websocket-client>=1.8
 websockets>=16.0

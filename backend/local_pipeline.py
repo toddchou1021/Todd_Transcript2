@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import io
 import json
 import logging
 import os
-import tempfile
-import threading
 import time
 import wave
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import requests
@@ -18,11 +17,15 @@ import websockets
 
 HOST = os.environ.get("TODD_PIPELINE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TODD_PIPELINE_PORT", "8765"))
-WHISPER_MODEL = os.environ.get("TODD_WHISPER_MODEL", "openai/whisper-large-v3-turbo")
-QWEN_MODEL = os.environ.get("TODD_QWEN_MODEL", "qwen3.5:4b")
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
 GEMINI_MODEL = os.environ.get("TODD_GEMINI_MODEL", "gemini-3.1-flash-lite")
-GEMINI_API_URL = os.environ.get("TODD_GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent")
+GEMINI_API_URL = os.environ.get(
+    "TODD_GEMINI_API_URL",
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+)
+GEMINI_UPLOAD_URL = os.environ.get("TODD_GEMINI_UPLOAD_URL", "https://generativelanguage.googleapis.com/upload/v1beta/files")
+GEMINI_FILE_URL = os.environ.get("TODD_GEMINI_FILE_URL", "https://generativelanguage.googleapis.com/v1beta/{name}")
+INLINE_AUDIO_LIMIT_BYTES = 14 * 1024 * 1024
+WAV_MIME_TYPE = "audio/wav"
 
 
 @dataclass
@@ -46,211 +49,146 @@ class SessionState:
             return 1
 
 
-class WhisperTranscriber:
-    def __init__(self, model_id: str, device: str, dtype: str) -> None:
-        self.model_id = model_id
-        self.device_name = device
-        self.dtype_name = dtype
-        self._pipe: Any = None
-        self._load_lock = threading.Lock()
-
-    def _resolve_device(self) -> str:
-        import torch
-
-        if self.device_name == "auto":
-            return "cuda:0" if torch.cuda.is_available() else "cpu"
-        return self.device_name
-
-    def _resolve_dtype(self, device: str) -> Any:
-        import torch
-
-        if self.dtype_name == "auto":
-            return torch.float16 if device.startswith("cuda") else torch.float32
-        return {
-            "float16": torch.float16,
-            "float32": torch.float32,
-            "bfloat16": torch.bfloat16,
-        }[self.dtype_name]
-
-    def load(self) -> None:
-        if self._pipe is not None:
-            return
-        with self._load_lock:
-            if self._pipe is not None:
-                return
-
-            try:
-                from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
-            except Exception as exc:
-                raise RuntimeError(
-                    "Local backend needs transformers, torch, and accelerate installed to use openai/whisper-large-v3-turbo."
-                ) from exc
-
-            device = self._resolve_device()
-            torch_dtype = self._resolve_dtype(device)
-            logging.info("Loading %s on %s with %s", self.model_id, device, torch_dtype)
-
-            model_kwargs = {
-                "torch_dtype": torch_dtype,
-                "low_cpu_mem_usage": True,
-                "use_safetensors": True,
-                "attn_implementation": "sdpa",
-            }
-            try:
-                model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                    self.model_id,
-                    local_files_only=True,
-                    **model_kwargs,
-                )
-                processor = AutoProcessor.from_pretrained(self.model_id, local_files_only=True)
-            except Exception:
-                model = AutoModelForSpeechSeq2Seq.from_pretrained(self.model_id, **model_kwargs)
-                processor = AutoProcessor.from_pretrained(self.model_id)
-
-            model.to(device)
-            self._pipe = pipeline(
-                "automatic-speech-recognition",
-                model=model,
-                tokenizer=processor.tokenizer,
-                feature_extractor=processor.feature_extractor,
-                torch_dtype=torch_dtype,
-                device=device,
-                chunk_length_s=25,
-                batch_size=4,
-                ignore_warning=True,
-            )
-            logging.info("Model loaded")
-
-    def transcribe(self, wav_path: Path, language: str | None = None) -> str:
-        self.load()
-        assert self._pipe is not None
-
-        generate_kwargs: dict[str, Any] = {"task": "transcribe"}
-        if language:
-            generate_kwargs["language"] = language
-
-        result = self._pipe(str(wav_path), generate_kwargs=generate_kwargs)
-        if isinstance(result, dict):
-            return str(result.get("text", "")).strip()
-        return str(result).strip()
-
-
-class OllamaPostprocessor:
-    def __init__(self, model: str, url: str, timeout: float, enabled: bool) -> None:
-        self.model = model
-        self.url = normalize_ollama_chat_url(url)
-        self.timeout = timeout
-        self.enabled = enabled
-
-    def generate(self, system: str, user: str) -> str:
-        if not self.enabled:
-            return ""
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "think": False,
-            "options": {
-                "temperature": 0.7,
-                "top_p": 0.8,
-                "top_k": 20,
-                "min_p": 0.0,
-                "presence_penalty": 1.5,
-                "repeat_penalty": 1.0,
-            },
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        }
-        response = requests.post(self.url, json=payload, timeout=self.timeout)
-        if response.status_code == 404:
-            raise RuntimeError(f"Ollama model '{self.model}' was not found. Pull it with: ollama pull {self.model}")
-        response.raise_for_status()
-        data = response.json()
-        message = data.get("message") or {}
-        return strip_thinking(str(message.get("content") or "")).strip()
-
-    def process(self, transcript: str, config: dict[str, Any]) -> tuple[str, float, str]:
-        if not self.enabled or not transcript.strip():
-            return transcript, 0.0, "disabled"
-
-        started = time.time()
-        try:
-            if is_translate_session(config):
-                target = str(config.get("target_language") or "en")
-                target_instruction = target
-                if target.lower() in {"zh", "zh-tw", "traditional chinese", "chinese"}:
-                    target_instruction = "Traditional Chinese (Taiwan). Use Traditional Chinese characters only, not Simplified Chinese."
-                system = (
-                    "You are a transcript translation engine. Return only the translated text. "
-                    "Do not answer the transcript, do not explain, do not add labels, and do not include thinking."
-                )
-                user = (
-                    f"Translate this transcript to {target_instruction}. Keep names, product names, "
-                    f"and technical terms accurate.\n\n<transcript>\n{transcript}\n</transcript>"
-                )
-                result = self.generate(system, user)
-                mode = "translate"
-            elif should_skip_gpt(config):
-                return transcript, 0.0, "skipped"
-            else:
-                system = (
-                    "You are a transcript cleanup engine for direct text insertion. "
-                    "Fix obvious ASR mistakes, punctuation, casing, and spacing. Preserve the user's language. "
-                    "If the transcript is Chinese, return Traditional Chinese characters for Taiwan only; do not use Simplified Chinese. "
-                    "Do not answer the transcript. Do not summarize. Do not add new information. "
-                    "Do not add labels. Return only the cleaned transcript text."
-                )
-                hotwords = str(config.get("hotwords") or "").strip()
-                user = (
-                    f"<transcript>\n{transcript}\n</transcript>\n\n"
-                    f"<hotwords>\n{hotwords}\n</hotwords>\n\n"
-                    "Return only the final cleaned text."
-                )
-                result = self.generate(system, user)
-                mode = "polish"
-
-            if not result:
-                return transcript, round(time.time() - started, 3), f"{mode}:empty"
-            return result, round(time.time() - started, 3), mode
-        except Exception as exc:
-            logging.exception("Ollama postprocess failed")
-            return transcript, round(time.time() - started, 3), f"error:{exc}"
-
-
-class GeminiTextPostprocessor:
-    def __init__(self, model: str, api_url_template: str, timeout: float) -> None:
+class GeminiClient:
+    def __init__(
+        self,
+        model: str,
+        api_url_template: str,
+        upload_url: str,
+        file_url_template: str,
+        timeout: float,
+    ) -> None:
         self.model = model
         self.api_url_template = api_url_template
+        self.upload_url = upload_url
+        self.file_url_template = file_url_template
         self.timeout = timeout
 
-    def generate(self, prompt: str, config: dict[str, Any]) -> str:
+    def generate_text(self, prompt: str, config: dict[str, Any]) -> str:
+        return self._generate([{"text": prompt}], config)
+
+    def generate_from_audio(self, wav_bytes: bytes, prompt: str, config: dict[str, Any]) -> str:
+        if len(wav_bytes) <= INLINE_AUDIO_LIMIT_BYTES:
+            parts = [
+                {"text": prompt},
+                {
+                    "inline_data": {
+                        "mime_type": WAV_MIME_TYPE,
+                        "data": base64.b64encode(wav_bytes).decode("ascii"),
+                    }
+                },
+            ]
+            return self._generate(parts, config)
+
+        file_info = self._upload_file(wav_bytes, config)
+        try:
+            parts = [
+                {"text": prompt},
+                {
+                    "file_data": {
+                        "mime_type": file_info.get("mimeType") or file_info.get("mime_type") or WAV_MIME_TYPE,
+                        "file_uri": file_info["uri"],
+                    }
+                },
+            ]
+            return self._generate(parts, config)
+        finally:
+            self._delete_file(file_info, config)
+
+    def _generate(self, parts: list[dict[str, Any]], config: dict[str, Any]) -> str:
         api_key = gemini_api_key(config)
         if not api_key:
             raise RuntimeError("Enter a Gemini API key in Settings before using Gemini mode.")
 
         model = gemini_model(config) or self.model
         payload = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": prompt}],
-                }
-            ],
+            "contents": [{"role": "user", "parts": parts}],
             "generationConfig": {
-                "temperature": 0.2,
+                "temperature": 0.1,
                 "thinkingConfig": {"thinkingLevel": "low"},
             },
         }
-        url = self.api_url_template.format(model=model)
         response = requests.post(
-            url,
+            self.api_url_template.format(model=model),
             headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
             json=payload,
             timeout=self.timeout,
         )
         response.raise_for_status()
         return gemini_response_text(response.json()).strip()
+
+    def _upload_file(self, wav_bytes: bytes, config: dict[str, Any]) -> dict[str, Any]:
+        api_key = gemini_api_key(config)
+        if not api_key:
+            raise RuntimeError("Enter a Gemini API key in Settings before using Gemini mode.")
+        metadata_response = requests.post(
+            self.upload_url,
+            headers={
+                "x-goog-api-key": api_key,
+                "X-Goog-Upload-Protocol": "resumable",
+                "X-Goog-Upload-Command": "start",
+                "X-Goog-Upload-Header-Content-Length": str(len(wav_bytes)),
+                "X-Goog-Upload-Header-Content-Type": WAV_MIME_TYPE,
+                "Content-Type": "application/json",
+            },
+            json={"file": {"display_name": "Todd Transcript recording"}},
+            timeout=self.timeout,
+        )
+        metadata_response.raise_for_status()
+        upload_url = metadata_response.headers.get("x-goog-upload-url")
+        if not upload_url:
+            raise RuntimeError("Gemini Files API did not return an upload URL.")
+
+        upload_response = requests.post(
+            upload_url,
+            headers={
+                "Content-Length": str(len(wav_bytes)),
+                "X-Goog-Upload-Offset": "0",
+                "X-Goog-Upload-Command": "upload, finalize",
+            },
+            data=wav_bytes,
+            timeout=self.timeout,
+        )
+        upload_response.raise_for_status()
+        file_info = (upload_response.json() or {}).get("file") or {}
+        if not file_info.get("uri"):
+            raise RuntimeError("Gemini Files API upload did not return a file URI.")
+        return file_info
+
+    def _delete_file(self, file_info: dict[str, Any], config: dict[str, Any]) -> None:
+        name = str(file_info.get("name") or "").strip()
+        if not name:
+            return
+        try:
+            requests.delete(
+                self.file_url_template.format(name=name),
+                headers={"x-goog-api-key": gemini_api_key(config)},
+                timeout=min(self.timeout, 30),
+            )
+        except Exception:
+            logging.debug("Best-effort Gemini file cleanup failed", exc_info=True)
+
+
+class GeminiAudioTranscriber:
+    def __init__(self, client: GeminiClient) -> None:
+        self.client = client
+        self.model_id = client.model
+
+    def transcribe(self, wav_bytes: bytes, config: dict[str, Any]) -> str:
+        hotwords = str(config.get("hotwords") or "").strip()
+        prompt = (
+            "Generate a verbatim transcript of the speech in this audio. "
+            "Return only the transcript text. Do not summarize, explain, label speakers, or translate. "
+            "Preserve the spoken language. If the speech is Chinese, use Traditional Chinese characters for Taiwan only. "
+            "Use the hotwords only as spelling hints for names, products, and technical terms.\n\n"
+            f"<hotwords>\n{hotwords}\n</hotwords>"
+        )
+        return self.client.generate_from_audio(wav_bytes, prompt, config)
+
+
+class GeminiTextPostprocessor:
+    def __init__(self, client: GeminiClient) -> None:
+        self.client = client
 
     def process(self, transcript: str, config: dict[str, Any]) -> tuple[str, float, str]:
         if not transcript.strip():
@@ -286,20 +224,13 @@ class GeminiTextPostprocessor:
                 )
                 mode = "gemini_polish"
 
-            result = self.generate(prompt, config)
+            result = self.client.generate_text(prompt, config)
             if not result:
                 return transcript, round(time.time() - started, 3), f"{mode}:empty"
             return result, round(time.time() - started, 3), mode
         except Exception as exc:
             logging.exception("Gemini postprocess failed")
             return transcript, round(time.time() - started, 3), f"error:{exc}"
-
-
-def strip_thinking(text: str) -> str:
-    marker = "</think>"
-    if marker in text:
-        text = text.split(marker, 1)[1]
-    return text.strip()
 
 
 def gemini_api_key(config: dict[str, Any]) -> str:
@@ -331,15 +262,6 @@ def gemini_response_text(data: dict[str, Any]) -> str:
     return text
 
 
-def normalize_ollama_chat_url(url: str) -> str:
-    value = (url or "http://127.0.0.1:11434").rstrip("/")
-    if value.endswith("/api/chat"):
-        return value
-    if value.endswith("/api/generate"):
-        return value.rsplit("/", 1)[0] + "/chat"
-    return value + "/api/chat"
-
-
 def should_skip_gpt(config: dict[str, Any]) -> bool:
     return bool(config.get("skip_gpt"))
 
@@ -351,35 +273,24 @@ def is_translate_session(config: dict[str, Any]) -> bool:
     return isinstance(target, str) and bool(target.strip())
 
 
-def ai_provider(config: dict[str, Any]) -> str:
-    provider = str(config.get("ai_provider") or "qwen").strip().lower()
-    return "gemini" if provider == "gemini" else "qwen"
-
-
 def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
     clean = dict(config)
-    for key in ("gemini", "openai"):
-        value = clean.get(key)
-        if isinstance(value, dict):
-            clean[key] = dict(value)
-            if clean[key].get("api_key"):
-                clean[key]["api_key"] = "***"
+    value = clean.get("gemini")
+    if isinstance(value, dict):
+        clean["gemini"] = dict(value)
+        if clean["gemini"].get("api_key"):
+            clean["gemini"]["api_key"] = "***"
     return clean
 
 
-def language_from_config(config: dict[str, Any]) -> str | None:
-    language = config.get("language") or config.get("source_language")
-    if isinstance(language, str) and language.strip():
-        return language.strip()
-    return None
-
-
-def write_pcm_wav(path: Path, pcm: bytes, sample_rate: int, channels: int) -> None:
-    with wave.open(str(path), "wb") as wf:
+def write_pcm_wav_bytes(pcm: bytes, sample_rate: int, channels: int) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
         wf.setnchannels(channels)
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
         wf.writeframes(pcm)
+    return buf.getvalue()
 
 
 async def send_json(ws: websockets.ServerConnection, payload: dict[str, Any]) -> None:
@@ -388,8 +299,7 @@ async def send_json(ws: websockets.ServerConnection, payload: dict[str, Any]) ->
 
 async def handle_client(
     ws: websockets.ServerConnection,
-    transcriber: WhisperTranscriber,
-    postprocessor: OllamaPostprocessor,
+    transcriber: GeminiAudioTranscriber,
     gemini_processor: GeminiTextPostprocessor,
 ) -> None:
     session = SessionState()
@@ -411,7 +321,7 @@ async def handle_client(
             msg_type = payload.get("type")
             if msg_type == "hello":
                 logging.info("Client hello: %s", payload)
-                await send_json(ws, {"type": "hello_ok", "backend_version": "1.0.5"})
+                await send_json(ws, {"type": "hello_ok", "backend_version": "1.0.6"})
                 continue
 
             if msg_type == "start":
@@ -424,7 +334,7 @@ async def handle_client(
                 continue
 
             if msg_type == "stop":
-                await process_stop(ws, transcriber, postprocessor, gemini_processor, session)
+                await process_stop(ws, transcriber, gemini_processor, session)
                 session = SessionState()
                 continue
 
@@ -441,8 +351,7 @@ async def handle_client(
 
 async def process_stop(
     ws: websockets.ServerConnection,
-    transcriber: WhisperTranscriber,
-    postprocessor: OllamaPostprocessor,
+    transcriber: GeminiAudioTranscriber,
     gemini_processor: GeminiTextPostprocessor,
     session: SessionState,
 ) -> None:
@@ -453,19 +362,12 @@ async def process_stop(
         await send_json(ws, {"type": "done", "total_elapsed": 0.0, "timing": {}})
         return
 
-    with tempfile.NamedTemporaryFile(prefix="todd-transcript-", suffix=".wav", delete=False) as tmp:
-        wav_path = Path(tmp.name)
-
     try:
-        write_pcm_wav(wav_path, pcm, session.sample_rate, session.channels)
-        language = language_from_config(session.config)
-        text = await asyncio.to_thread(transcriber.transcribe, wav_path, language)
+        wav_bytes = write_pcm_wav_bytes(pcm, session.sample_rate, session.channels)
+        text = await asyncio.to_thread(transcriber.transcribe, wav_bytes, session.config)
         asr_elapsed = round(time.time() - started, 3)
 
-        if ai_provider(session.config) == "gemini":
-            final_text, gpt_elapsed, gpt_mode = await asyncio.to_thread(gemini_processor.process, text, session.config)
-        else:
-            final_text, gpt_elapsed, gpt_mode = await asyncio.to_thread(postprocessor.process, text, session.config)
+        final_text, gpt_elapsed, gpt_mode = await asyncio.to_thread(gemini_processor.process, text, session.config)
 
         await send_json(ws, {"type": "asr_delta", "text": text})
         await send_json(
@@ -474,7 +376,7 @@ async def process_stop(
                 "type": "asr_done",
                 "text": text,
                 "elapsed": asr_elapsed,
-                "raw_json": {"model": transcriber.model_id},
+                "raw_json": {"model": transcriber.model_id, "provider": "gemini"},
             },
         )
 
@@ -491,6 +393,7 @@ async def process_stop(
                     "asr_elapsed": asr_elapsed,
                     "gpt_elapsed": gpt_elapsed,
                     "local_backend": True,
+                    "asr_mode": "gemini_audio",
                     "gpt_mode": gpt_mode,
                 },
             },
@@ -514,43 +417,35 @@ async def process_stop(
                 "timing": {"local_backend": True},
             },
         )
-    finally:
-        try:
-            wav_path.unlink(missing_ok=True)
-        except Exception:
-            pass
 
 
-async def process_warmup(ws: websockets.ServerConnection, transcriber: WhisperTranscriber) -> None:
+async def process_warmup(ws: websockets.ServerConnection, transcriber: GeminiAudioTranscriber) -> None:
     started = time.time()
-    try:
-        await send_json(ws, {"type": "warmup_started"})
-        await asyncio.to_thread(transcriber.load)
-        await send_json(
-            ws,
-            {
-                "type": "warmup_done",
-                "elapsed": round(time.time() - started, 3),
-                "model": transcriber.model_id,
-            },
-        )
-    except Exception as exc:
-        logging.exception("Warmup failed")
-        await send_json(ws, {"type": "warmup_error", "message": str(exc)})
+    await send_json(ws, {"type": "warmup_started"})
+    await send_json(
+        ws,
+        {
+            "type": "warmup_done",
+            "elapsed": round(time.time() - started, 3),
+            "model": transcriber.model_id,
+            "provider": "gemini",
+        },
+    )
 
 
 async def main_async(args: argparse.Namespace) -> None:
-    transcriber = WhisperTranscriber(args.model, args.device, args.dtype)
-    postprocessor = OllamaPostprocessor(
-        args.ollama_model,
-        args.ollama_url,
-        args.ollama_timeout,
-        not args.no_ollama,
+    gemini_client = GeminiClient(
+        args.gemini_model,
+        args.gemini_api_url,
+        args.gemini_upload_url,
+        args.gemini_file_url,
+        args.gemini_timeout,
     )
-    gemini_processor = GeminiTextPostprocessor(args.gemini_model, args.gemini_api_url, args.gemini_timeout)
+    transcriber = GeminiAudioTranscriber(gemini_client)
+    gemini_processor = GeminiTextPostprocessor(gemini_client)
 
     async def handler(ws: websockets.ServerConnection) -> None:
-        await handle_client(ws, transcriber, postprocessor, gemini_processor)
+        await handle_client(ws, transcriber, gemini_processor)
 
     async with websockets.serve(
         handler,
@@ -560,32 +455,25 @@ async def main_async(args: argparse.Namespace) -> None:
         ping_interval=20,
         ping_timeout=20,
     ):
-        logging.info("Todd Transcript local backend listening on ws://%s:%s/ws/pipeline", args.host, args.port)
+        logging.info("Todd Transcript Gemini backend listening on ws://%s:%s/ws/pipeline", args.host, args.port)
         await asyncio.Future()
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Local Whisper backend for Todd Transcript")
+    parser = argparse.ArgumentParser(description="Gemini backend for Todd Transcript")
     parser.add_argument("--host", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
-    parser.add_argument("--model", default=WHISPER_MODEL)
-    parser.add_argument("--device", choices=["auto", "cpu", "cuda:0"], default=os.environ.get("TODD_WHISPER_DEVICE", "auto"))
-    parser.add_argument("--dtype", choices=["auto", "float16", "float32", "bfloat16"], default=os.environ.get("TODD_WHISPER_DTYPE", "auto"))
-    parser.add_argument("--ollama-model", default=QWEN_MODEL)
-    parser.add_argument("--ollama-url", default=OLLAMA_URL)
-    parser.add_argument("--ollama-timeout", type=float, default=float(os.environ.get("TODD_OLLAMA_TIMEOUT", "60")))
     parser.add_argument("--gemini-model", default=GEMINI_MODEL)
     parser.add_argument("--gemini-api-url", default=GEMINI_API_URL)
+    parser.add_argument("--gemini-upload-url", default=GEMINI_UPLOAD_URL)
+    parser.add_argument("--gemini-file-url", default=GEMINI_FILE_URL)
     parser.add_argument("--gemini-timeout", type=float, default=float(os.environ.get("TODD_GEMINI_TIMEOUT", "120")))
-    parser.add_argument("--no-ollama", action="store_true")
     parser.add_argument("--log-level", default=os.environ.get("TODD_BACKEND_LOG_LEVEL", "INFO"))
     args, _unknown = parser.parse_known_args()
     return args
 
 
 def main() -> None:
-    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
     args = parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),

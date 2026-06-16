@@ -10,21 +10,18 @@ from .paths import CONFIG_PATH, ROOT_DIR
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "hotkey": {"transcribe": "ctrl+`", "translate": "ctrl+b"},
+    "hotkey": {"transcribe": "ctrl+alt+f", "translate": "ctrl+alt+d"},
+    "ui_language": "en",
     "target_language": "zh",
     "postprocess": True,
-    "ai_provider": "qwen",
     "pipeline_api": {"url": "ws://127.0.0.1:8765/ws/pipeline", "timeout": 300},
     "recorder": {"sample_rate": 16000, "channels": 1, "input_mode": "system_audio"},
     "realtime": {
         "show_partial_words": False,
-        "asr_provider": "openai",
-        "translation_provider": "openai",
         "gemini_translate_model": "gemini-3.5-live-translate-preview",
     },
     "hotwords_file": "data/hotwords.txt",
     "history_file": "data/history.json",
-    "openai": {"api_key": ""},
     "gemini": {"api_key": "", "model": "gemini-3.1-flash-lite"},
 }
 
@@ -60,6 +57,19 @@ def set_nested(data: dict[str, Any], dotted: str, value: Any) -> None:
     cur[parts[-1]] = value
 
 
+def _normalize_config(data: dict[str, Any]) -> dict[str, Any]:
+    data.pop("ai_provider", None)
+    data.pop("openai", None)
+    data.pop("source_language", None)
+    language = str(data.get("ui_language") or "en").strip().lower()
+    data["ui_language"] = "zh" if language in {"zh", "zh-tw", "chinese", "traditional chinese"} else "en"
+    realtime = data.get("realtime")
+    if isinstance(realtime, dict):
+        realtime.pop("asr_provider", None)
+        realtime.pop("translation_provider", None)
+    return data
+
+
 class ConfigStore:
     def __init__(self, path: Path = CONFIG_PATH):
         self.path = path
@@ -73,11 +83,11 @@ class ConfigStore:
 
     def load(self) -> dict[str, Any]:
         if not self.path.exists():
-            self.data = deepcopy(DEFAULT_CONFIG)
+            self.data = _normalize_config(deepcopy(DEFAULT_CONFIG))
             self.save()
             return self.data
         raw = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
-        self.data = _merge(DEFAULT_CONFIG, raw)
+        self.data = _normalize_config(_merge(DEFAULT_CONFIG, raw))
         return self.data
 
     def save(self) -> None:
@@ -91,16 +101,17 @@ class ConfigStore:
         return get_nested(self.data, dotted, default)
 
     def set(self, dotted: str, value: Any) -> dict[str, Any]:
+        if dotted in {"ai_provider", "realtime.asr_provider", "realtime.translation_provider"} or dotted.startswith("openai."):
+            self.data = _normalize_config(self.data)
+            self.save()
+            return self.public_config()
         set_nested(self.data, dotted, value)
+        self.data = _normalize_config(self.data)
         self.save()
         return self.public_config()
 
     def public_config(self) -> dict[str, Any]:
         cfg = deepcopy(self.data)
-        key = get_nested(cfg, "openai.api_key", "")
-        if isinstance(cfg.get("openai"), dict):
-            cfg["openai"]["has_api_key"] = bool(key)
-            cfg["openai"]["api_key"] = ""
         gemini_key = get_nested(cfg, "gemini.api_key", "")
         if isinstance(cfg.get("gemini"), dict):
             cfg["gemini"]["has_api_key"] = bool(gemini_key)

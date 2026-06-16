@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 APP_NAME = "Todd Transcript"
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 
 
 def _log(message: str) -> None:
@@ -80,20 +80,6 @@ def _ensure_venv(app_dir: Path) -> Path:
             _run_checked(["python", "-m", "venv", str(venv)], app_dir)
 
     _run_checked([str(python), "-m", "pip", "install", "--upgrade", "pip"], app_dir)
-    _run_checked(
-        [
-            str(python),
-            "-m",
-            "pip",
-            "install",
-            "torch",
-            "torchvision",
-            "torchaudio",
-            "--index-url",
-            "https://download.pytorch.org/whl/cu128",
-        ],
-        app_dir,
-    )
     _run_checked([str(python), "-m", "pip", "install", "-r", str(app_dir / "requirements.txt")], app_dir)
     marker.write_text("ok\n", encoding="utf-8")
     return python
@@ -128,8 +114,6 @@ def _run_app_in_process(app_dir: Path, python: Path) -> None:
     os.environ["TODD_INSTALLED_SOURCE"] = "1"
     os.environ["TODD_APP_SOURCE_DIR"] = str(app_dir)
     os.environ["TODD_VENV_PYTHON"] = env_python
-    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
     _add_runtime_paths(app_dir, python)
     sys.argv = [str(app_dir / "launcher.py")]
     runpy.run_path(str(app_dir / "launcher.py"), run_name="__main__")

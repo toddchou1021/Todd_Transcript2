@@ -1,9 +1,9 @@
 hotkey:
-  transcribe: ctrl+`
-  translate: ctrl+b
+  transcribe: ctrl+alt+f
+  translate: ctrl+alt+d
+ui_language: en
 target_language: zh
 postprocess: true
-ai_provider: qwen
 pipeline_api:
   url: ws://127.0.0.1:8765/ws/pipeline
   timeout: 300
@@ -13,13 +13,9 @@ recorder:
   input_mode: system_audio
 realtime:
   show_partial_words: false
-  asr_provider: openai
-  translation_provider: openai
   gemini_translate_model: gemini-3.5-live-translate-preview
 hotwords_file: data/hotwords.txt
 history_file: data/history.json
-openai:
-  api_key: ""
 gemini:
   api_key: ""
   model: gemini-3.1-flash-lite

@@ -16,10 +16,9 @@ from .audio_recorder import AudioRecorder
 from .paths import EXPORTS_DIR
 
 
-OPENAI_REALTIME_SAMPLE_RATE = 24000
 GEMINI_TRANSLATE_SAMPLE_RATE = 16000
 GEMINI_TRANSLATE_CHUNK_FRAMES = 1600
-ASR_COMMIT_SECONDS = 2.0
+GEMINI_REALTIME_MODEL = "gemini-3.5-live-translate-preview"
 
 
 class RealtimeBaseController:
@@ -193,23 +192,20 @@ class RealtimeBaseController:
             self._handle_event(event)
 
     def _api_key(self) -> str:
-        configured = ((self.config.get("openai") or {}).get("api_key") or "").strip()
-        return configured or os.environ.get("OPENAI_API_KEY", "").strip()
+        configured = ((self.config.get("gemini") or {}).get("api_key") or "").strip()
+        return configured or os.environ.get("GEMINI_API_KEY", "").strip()
 
     def _missing_api_key_error(self) -> str:
-        return "Enter an OpenAI API key in Settings first."
+        return "Enter a Gemini API key in the main window first."
 
     def _connection_headers(self, api_key: str) -> list[str]:
-        return [
-            f"Authorization: Bearer {api_key}",
-            "OpenAI-Safety-Identifier: todd-transcript-dev-user",
-        ]
+        return []
 
     def _sample_rate(self) -> int:
-        return OPENAI_REALTIME_SAMPLE_RATE
+        return GEMINI_TRANSLATE_SAMPLE_RATE
 
     def _chunk_frames(self) -> int:
-        return 1024
+        return GEMINI_TRANSLATE_CHUNK_FRAMES
 
     def _wait_until_ready(self) -> None:
         return
@@ -254,32 +250,28 @@ class RealtimeBaseController:
 
 
 class RealtimeASRController(RealtimeBaseController):
-    model = "gpt-realtime-whisper"
-    session_model = "transcription"
+    model = GEMINI_REALTIME_MODEL
+    session_model = "live-translate"
     title = "Realtime ASR"
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
-        self._active_provider = "openai"
         self._gemini_ready = threading.Event()
-        self._pending_audio_bytes = 0
-        self._last_commit_at = 0.0
         with self._lock:
             self.state["finals"] = []
             self.state["partial"] = ""
             self.state["session_model"] = self.session_model
-            self.state["provider"] = "openai"
+            self.state["provider"] = "gemini"
 
     def start(self, input_mode: str, target_language: str | None = None) -> dict[str, Any]:
         with self._lock:
             if self.state.get("running"):
                 return {"ok": True}
-        self._active_provider = self._configured_provider()
         self._gemini_ready.clear()
         with self._lock:
-            self.state["provider"] = self._active_provider
+            self.state["provider"] = "gemini"
             self.state["model"] = self._selected_model()
-            self.state["session_model"] = "live-translate" if self._active_provider == "gemini" else self.session_model
+            self.state["session_model"] = self.session_model
         return super().start(input_mode, target_language)
 
     def stop(self) -> dict[str, Any]:
@@ -314,141 +306,51 @@ class RealtimeASRController(RealtimeBaseController):
                 state["partial"] = ""
             return state
 
-    def _configured_provider(self) -> str:
-        provider = str(((self.config.get("realtime") or {}).get("asr_provider") or "openai")).lower()
-        return "gemini" if provider == "gemini" else "openai"
-
     def _selected_model(self) -> str:
-        if self._active_provider == "gemini":
-            return str(
-                ((self.config.get("realtime") or {}).get("gemini_translate_model"))
-                or "gemini-3.5-live-translate-preview"
-            )
-        return self.model
-
-    def _api_key(self) -> str:
-        if self._active_provider == "gemini":
-            configured = ((self.config.get("gemini") or {}).get("api_key") or "").strip()
-            return configured or os.environ.get("GEMINI_API_KEY", "").strip()
-        return super()._api_key()
-
-    def _missing_api_key_error(self) -> str:
-        if self._active_provider == "gemini":
-            return "Enter a Gemini API key in the main window first."
-        return super()._missing_api_key_error()
-
-    def _connection_headers(self, api_key: str) -> list[str]:
-        if self._active_provider == "gemini":
-            return []
-        return super()._connection_headers(api_key)
-
-    def _sample_rate(self) -> int:
-        return GEMINI_TRANSLATE_SAMPLE_RATE if self._active_provider == "gemini" else OPENAI_REALTIME_SAMPLE_RATE
-
-    def _chunk_frames(self) -> int:
-        return GEMINI_TRANSLATE_CHUNK_FRAMES if self._active_provider == "gemini" else 1024
+        return str(((self.config.get("realtime") or {}).get("gemini_translate_model")) or GEMINI_REALTIME_MODEL)
 
     def _url(self, api_key: str) -> str:
-        if self._active_provider == "gemini":
-            encoded_key = quote(api_key, safe="")
-            return (
-                "wss://generativelanguage.googleapis.com/ws/"
-                "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-                f"?key={encoded_key}"
-            )
-        return "wss://api.openai.com/v1/realtime?intent=transcription"
+        encoded_key = quote(api_key, safe="")
+        return (
+            "wss://generativelanguage.googleapis.com/ws/"
+            "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+            f"?key={encoded_key}"
+        )
 
     def _send_session_update(self, target_language: str | None) -> None:
-        if self._active_provider == "gemini":
-            self._send_json(
-                {
-                    "setup": {
-                        "model": f"models/{self._selected_model()}",
-                        "generationConfig": {
-                            "responseModalities": ["AUDIO"],
-                            "translationConfig": {
-                                "targetLanguageCode": "en",
-                                "echoTargetLanguage": True,
-                            },
-                        },
-                        "inputAudioTranscription": {},
-                        "outputAudioTranscription": {},
-                    }
-                }
-            )
-            return
-        self._pending_audio_bytes = 0
-        self._last_commit_at = time.monotonic()
-        language = ((self.config.get("realtime") or {}).get("source_language") or "").strip()
-        transcription: dict[str, Any] = {"model": self.model}
-        if language:
-            transcription["language"] = language
         self._send_json(
             {
-                "type": "session.update",
-                "session": {
-                    "type": "transcription",
-                    "audio": {
-                        "input": {
-                            "format": {"type": "audio/pcm", "rate": OPENAI_REALTIME_SAMPLE_RATE},
-                            "transcription": transcription,
-                        }
+                "setup": {
+                    "model": f"models/{self._selected_model()}",
+                    "generationConfig": {
+                        "responseModalities": ["AUDIO"],
+                        "translationConfig": {
+                            "targetLanguageCode": "en",
+                            "echoTargetLanguage": True,
+                        },
                     },
+                    "inputAudioTranscription": {},
+                    "outputAudioTranscription": {},
                 },
             }
         )
 
     def _send_audio(self, pcm: bytes) -> None:
-        if self._active_provider == "gemini":
-            self._send_json(
-                {
-                    "realtimeInput": {
-                        "audio": {
-                            "data": self._audio_b64(pcm),
-                            "mimeType": f"audio/pcm;rate={GEMINI_TRANSLATE_SAMPLE_RATE}",
-                        }
+        self._send_json(
+            {
+                "realtimeInput": {
+                    "audio": {
+                        "data": self._audio_b64(pcm),
+                        "mimeType": f"audio/pcm;rate={GEMINI_TRANSLATE_SAMPLE_RATE}",
                     }
                 }
-            )
-            return
-        self._send_json({"type": "input_audio_buffer.append", "audio": self._audio_b64(pcm)})
-        self._pending_audio_bytes += len(pcm)
-        now = time.monotonic()
-        min_bytes = int(OPENAI_REALTIME_SAMPLE_RATE * 2 * ASR_COMMIT_SECONDS)
-        if self._pending_audio_bytes >= min_bytes and now - self._last_commit_at >= ASR_COMMIT_SECONDS:
-            self._send_json({"type": "input_audio_buffer.commit"})
-            self._pending_audio_bytes = 0
-            self._last_commit_at = now
-
-    def _commit_or_close(self) -> None:
-        if self._active_provider == "gemini":
-            return
-        if self._pending_audio_bytes:
-            self._send_json({"type": "input_audio_buffer.commit"})
-            self._pending_audio_bytes = 0
+            }
+        )
 
     def _handle_event(self, event: dict[str, Any]) -> None:
-        if self._active_provider == "gemini":
-            self._handle_gemini_event(event)
-            return
-        kind = event.get("type", "")
-        if kind == "conversation.item.input_audio_transcription.delta":
-            with self._lock:
-                self.state["partial"] = str(event.get("delta") or "") if self._show_partial_words() else ""
-        elif kind == "conversation.item.input_audio_transcription.completed":
-            transcript = str(event.get("transcript") or "").strip()
-            if transcript:
-                with self._lock:
-                    self.state.setdefault("finals", []).append(transcript)
-                    self.state["partial"] = ""
-                    self.state["text"] = self._join_finals(self.state.get("finals") or [])
-        elif kind == "error":
-            error = event.get("error") or {}
-            self._set_state(error=str(error.get("message") or error or "Realtime error"), status="Error")
+        self._handle_gemini_event(event)
 
     def _wait_until_ready(self) -> None:
-        if self._active_provider != "gemini":
-            return
         if not self._gemini_ready.wait(timeout=15):
             raise RuntimeError("Gemini realtime transcription setup timed out.")
         error = str(self.get_status().get("error") or "")
@@ -456,8 +358,7 @@ class RealtimeASRController(RealtimeBaseController):
             raise RuntimeError(error)
 
     def _on_receive_error(self) -> None:
-        if self._active_provider == "gemini":
-            self._gemini_ready.set()
+        self._gemini_ready.set()
 
     def _handle_gemini_event(self, event: dict[str, Any]) -> None:
         if "setupComplete" in event:
@@ -486,13 +387,6 @@ class RealtimeASRController(RealtimeBaseController):
             value = str(part or "")
             if not value:
                 continue
-            if self._active_provider != "gemini":
-                lines = [" ".join(line.split()) for line in value.splitlines()]
-                value = "\n".join(lines)
-                if str(part).endswith("\n"):
-                    value += "\n"
-            if result and not result.endswith("\n") and value:
-                result += "" if self._active_provider == "gemini" else " "
             result += value
         return result.strip(" ")
 
@@ -501,26 +395,24 @@ class RealtimeASRController(RealtimeBaseController):
 
 
 class RealtimeTranslateController(RealtimeBaseController):
-    model = "gpt-realtime-translate"
+    model = GEMINI_REALTIME_MODEL
     title = "Realtime Translate"
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
-        self._active_provider = "openai"
         self._gemini_ready = threading.Event()
         with self._lock:
             self.state["translation_text"] = ""
             self.state["source_text"] = ""
-            self.state["provider"] = "openai"
+            self.state["provider"] = "gemini"
 
     def start(self, input_mode: str, target_language: str | None = None) -> dict[str, Any]:
         with self._lock:
             if self.state.get("running"):
                 return {"ok": True}
-        self._active_provider = self._configured_provider()
         self._gemini_ready.clear()
         with self._lock:
-            self.state["provider"] = self._active_provider
+            self.state["provider"] = "gemini"
             self.state["model"] = self._selected_model()
         return super().start(input_mode, target_language)
 
@@ -548,117 +440,51 @@ class RealtimeTranslateController(RealtimeBaseController):
         self.state["source_text"] = source
         self.state["text"] = translation
 
-    def _configured_provider(self) -> str:
-        provider = str(((self.config.get("realtime") or {}).get("translation_provider") or "openai")).lower()
-        return "gemini" if provider == "gemini" else "openai"
-
     def _selected_model(self) -> str:
-        if self._active_provider == "gemini":
-            return str(
-                ((self.config.get("realtime") or {}).get("gemini_translate_model"))
-                or "gemini-3.5-live-translate-preview"
-            )
-        return "gpt-realtime-translate"
-
-    def _api_key(self) -> str:
-        if self._active_provider == "gemini":
-            configured = ((self.config.get("gemini") or {}).get("api_key") or "").strip()
-            return configured or os.environ.get("GEMINI_API_KEY", "").strip()
-        return super()._api_key()
-
-    def _missing_api_key_error(self) -> str:
-        if self._active_provider == "gemini":
-            return "Enter a Gemini API key in the main window first."
-        return super()._missing_api_key_error()
-
-    def _connection_headers(self, api_key: str) -> list[str]:
-        if self._active_provider == "gemini":
-            return []
-        return super()._connection_headers(api_key)
-
-    def _sample_rate(self) -> int:
-        return GEMINI_TRANSLATE_SAMPLE_RATE if self._active_provider == "gemini" else OPENAI_REALTIME_SAMPLE_RATE
-
-    def _chunk_frames(self) -> int:
-        return GEMINI_TRANSLATE_CHUNK_FRAMES if self._active_provider == "gemini" else 1024
+        return str(((self.config.get("realtime") or {}).get("gemini_translate_model")) or GEMINI_REALTIME_MODEL)
 
     def _url(self, api_key: str) -> str:
-        if self._active_provider == "gemini":
-            encoded_key = quote(api_key, safe="")
-            return (
-                "wss://generativelanguage.googleapis.com/ws/"
-                "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-                f"?key={encoded_key}"
-            )
-        return "wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate"
+        encoded_key = quote(api_key, safe="")
+        return (
+            "wss://generativelanguage.googleapis.com/ws/"
+            "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+            f"?key={encoded_key}"
+        )
 
     def _send_session_update(self, target_language: str | None) -> None:
-        if self._active_provider == "gemini":
-            self._send_json(
-                {
-                    "setup": {
-                        "model": f"models/{self._selected_model()}",
-                        "generationConfig": {
-                            "responseModalities": ["AUDIO"],
-                            "translationConfig": {
-                                "targetLanguageCode": self._gemini_language_code(target_language),
-                                "echoTargetLanguage": True,
-                            },
-                        },
-                        "inputAudioTranscription": {},
-                        "outputAudioTranscription": {},
-                    }
-                }
-            )
-            return
         self._send_json(
             {
-                "type": "session.update",
-                "session": {
-                    "audio": {
-                        "output": {"language": target_language or self.config.get("target_language") or "zh"},
-                    }
+                "setup": {
+                    "model": f"models/{self._selected_model()}",
+                    "generationConfig": {
+                        "responseModalities": ["AUDIO"],
+                        "translationConfig": {
+                            "targetLanguageCode": self._gemini_language_code(target_language),
+                            "echoTargetLanguage": True,
+                        },
+                    },
+                    "inputAudioTranscription": {},
+                    "outputAudioTranscription": {},
                 },
             }
         )
 
     def _send_audio(self, pcm: bytes) -> None:
-        if self._active_provider == "gemini":
-            self._send_json(
-                {
-                    "realtimeInput": {
-                        "audio": {
-                            "data": self._audio_b64(pcm),
-                            "mimeType": f"audio/pcm;rate={GEMINI_TRANSLATE_SAMPLE_RATE}",
-                        }
+        self._send_json(
+            {
+                "realtimeInput": {
+                    "audio": {
+                        "data": self._audio_b64(pcm),
+                        "mimeType": f"audio/pcm;rate={GEMINI_TRANSLATE_SAMPLE_RATE}",
                     }
                 }
-            )
-            return
-        self._send_json({"type": "session.input_audio_buffer.append", "audio": self._audio_b64(pcm)})
+            }
+        )
 
     def _handle_event(self, event: dict[str, Any]) -> None:
-        if self._active_provider == "gemini":
-            self._handle_gemini_event(event)
-            return
-        kind = event.get("type", "")
-        if kind == "session.output_transcript.delta":
-            delta = str(event.get("delta") or "")
-            with self._lock:
-                self.state["translation_text"] = str(self.state.get("translation_text") or "") + delta
-                self.state["text"] = self.state["translation_text"]
-                self.state["status"] = "Translating"
-        elif kind == "session.input_transcript.delta":
-            delta = str(event.get("delta") or "")
-            with self._lock:
-                self.state["source_text"] = str(self.state.get("source_text") or "") + delta
-        elif kind == "error":
-            error = event.get("error") or {}
-            self._set_state(error=str(error.get("message") or error or "Realtime error"), status="Error")
+        self._handle_gemini_event(event)
 
     def _wait_until_ready(self) -> None:
-        if self._active_provider != "gemini":
-            return
         if not self._gemini_ready.wait(timeout=15):
             raise RuntimeError("Gemini Live Translate setup timed out.")
         error = str(self.get_status().get("error") or "")
@@ -666,8 +492,7 @@ class RealtimeTranslateController(RealtimeBaseController):
             raise RuntimeError(error)
 
     def _on_receive_error(self) -> None:
-        if self._active_provider == "gemini":
-            self._gemini_ready.set()
+        self._gemini_ready.set()
 
     def _handle_gemini_event(self, event: dict[str, Any]) -> None:
         if "setupComplete" in event:
