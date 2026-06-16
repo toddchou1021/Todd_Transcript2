@@ -116,10 +116,10 @@ For better security, restrict the key to the Gemini API in Google AI Studio afte
 
 ### Current Gemini Limits
 
-Google says Gemini API limits can vary by project, account tier, and time, and active limits should be checked in Google AI Studio. As of this README update, the current expected limits for this app are:
+Google says Gemini API limits can vary by project, account tier, and time, and active limits should be checked in Google AI Studio. As of this README update, the current expected Free tier limits for this app are:
 
-- Gemini 3.1 Flash Lite: 500 requests per day.
-- Gemini Live `gemini-3.5-live-translate-preview`: unlimited daily requests.
+- Gemini 3.1 Flash Lite Free tier: 500 requests per day.
+- Gemini Live `gemini-3.5-live-translate-preview` Free tier: unlimited daily requests.
 
 ----------
 
@@ -155,10 +155,10 @@ Google says Gemini API limits can vary by project, account tier, and time, and a
 
 ### 目前 Gemini 使用限制
 
-Google 表示 Gemini API 限制可能因 project、帳戶層級與時間而不同，實際可用限制應以 Google AI Studio 顯示為準。截至本 README 更新時，此 app 目前預期限制如下：
+Google 表示 Gemini API 限制可能因 project、帳戶層級與時間而不同，實際可用限制應以 Google AI Studio 顯示為準。截至本 README 更新時，此 app 目前預期的免費層級限制如下：
 
-- Gemini 3.1 Flash Lite：每天 500 次 requests。
-- Gemini Live `gemini-3.5-live-translate-preview`：每天 requests 無上限。
+- Gemini 3.1 Flash Lite 免費層級：每天 500 次 requests。
+- Gemini Live `gemini-3.5-live-translate-preview` 免費層級：每天 requests 無上限。
 
 ## Requirements
 
